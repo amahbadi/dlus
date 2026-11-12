@@ -27,7 +27,12 @@ jobs:
         run: python3 macos/check_js.py dlus.py
       - name: Shell scripts syntax
         run: for f in gateway/*.sh gateway/dlus-gw macos/*.sh macos/uninstall.command; do bash -n "$f"; done
-      - name: Security tests
+      - name: ffmpeg (for the media tests)
+        run: brew install ffmpeg
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      - name: Tests (security, regressions, downloads, servers, media)
         run: python3 -m unittest discover -s tests -v
       - name: VPN-router firewall rules load in macOS pf (syntax check, changes nothing)
         run: sudo bash gateway/dlus-gw selftest | tee /dev/stderr | grep -c '^ok rules' | grep -qx 3

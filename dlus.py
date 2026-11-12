@@ -742,8 +742,8 @@ def styled_ass(vtt_path, style, delay):
     bold = -1 if style.get("bold", True) else 0
 
     def ts(x):
-        x = max(0.0, x)
-        return "%d:%02d:%02d.%02d" % (x // 3600, x % 3600 // 60, x % 60, round(x % 1 * 100) % 100)
+        cs = round(max(0.0, x) * 100)  # whole centiseconds first, so 1.996 s becomes 0:00:02.00 (not 0:00:01.00)
+        return "%d:%02d:%02d.%02d" % (cs // 360000, cs // 6000 % 60, cs // 100 % 60, cs % 100)
     lines = ["[Script Info]", "ScriptType: v4.00+", "PlayResX: 1920", "PlayResY: 1080", "WrapStyle: 0", "ScaledBorderAndShadow: yes", "",
              "[V4+ Styles]", "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, "
              "StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",

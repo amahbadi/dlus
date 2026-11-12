@@ -54,6 +54,11 @@ class Subtitles(unittest.TestCase):
         out = open(dlus.cut_srt(self.vtt("WEBVTT\n\n00:00:10.000 --> 00:00:12.500\nhello\n"), 9.0004, 0)).read()
         self.assertIn("00:00:01,000 --> 00:00:03,500", out)
 
+    def test_styled_subtitle_carries_rounded_centiseconds(self):  # 7.28: 1.996 s was written as 0:00:01.00
+        p = self.vtt("WEBVTT\n\n00:00:01.996 --> 00:00:03.000\nhello\n")
+        ass, _ = dlus.styled_ass(p, {"size": 5, "color": "#ffffff", "bg": "shadow", "pos": 7, "bold": True, "font": "Vazirmatn"}, 0)
+        self.assertIn("0:00:02.00,0:00:03.00", open(ass, encoding="utf-8").read())
+
     def test_cut_starts_at_the_asked_time_with_sync(self):  # 7.18: the cut must use the asked start, plus the film's sync
         p = self.vtt("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nbefore\n\n00:01:00.000 --> 00:01:02.000\nin\n")
         out = open(dlus.cut_srt(p, 59.0, 0.5)).read()
