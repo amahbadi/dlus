@@ -11,6 +11,7 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
   <a href="https://github.com/amahbadi/dlus/actions/workflows/security.yml"><img alt="Security scan" src="https://github.com/amahbadi/dlus/actions/workflows/security.yml/badge.svg"></a>
   <a href="https://github.com/amahbadi/dlus/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/amahbadi/dlus/actions/workflows/codeql.yml/badge.svg"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/amahbadi/dlus"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/amahbadi/dlus/badge"></a>
+  <a href="https://www.bestpractices.dev/projects/16613"><img alt="OpenSSF Best Practices" src="https://www.bestpractices.dev/projects/16613/badge"></a>
   <a href="https://github.com/amahbadi/dlus/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/amahbadi/dlus/total?color=3f6bff"></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-black?logo=apple">
   <img alt="LG webOS" src="https://img.shields.io/badge/TV-LG%20webOS-a50034">
@@ -28,6 +29,7 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
   <a href="#-screenshots">📸 Screenshots</a> ·
   <a href="#-install">📦 Install</a> ·
   <a href="docs/USER-GUIDE.md">📖 User guide</a> ·
+  <a href="CHANGELOG.md">📝 Changelog</a> ·
   <a href="#-special-thanks">🎬 Special thanks</a>
 </p>
 
@@ -134,7 +136,7 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
 | ✅ let a new TV or phone in | press **Allow** on the banner that appears in dlus |
 
 > [!NOTE]
-> 📖 The full guide - every feature, setting and shortcut - is in **[docs/USER-GUIDE.md](docs/USER-GUIDE.md)**.
+> 📖 The full guide - every feature, setting and shortcut - is in **[docs/USER-GUIDE.md](docs/USER-GUIDE.md)**. Command line, local API, network addresses and files: **[docs/INTERFACES.md](docs/INTERFACES.md)**. What changed: **[CHANGELOG.md](CHANGELOG.md)**.
 
 ## 🧪 Tested with
 

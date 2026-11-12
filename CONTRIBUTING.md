@@ -19,7 +19,10 @@ fork → branch → pull request → 🤖 checks comment on it → fix until ✅
 ```
 
 1. **Fork** the repository and create a branch.
-2. **Keep changes focused**; follow the style of the code around you (dlus is one Python file using only the standard library).
+2. **Keep changes focused** and follow the code standard:
+   - Python 3.9+, **standard library only** (no new dependencies), [PEP 8](https://peps.python.org/pep-0008/) style as in the code around you, lines up to 160 characters
+   - external programs only with argument lists (never `shell=True`), files only inside the folders dlus owns, input from the network always checked
+   - shell scripts must pass `shellcheck -S warning`
 3. **Run the checks** before you push - CI runs the same:
    ```sh
    python3 -m py_compile dlus.py
@@ -28,8 +31,9 @@ fork → branch → pull request → 🤖 checks comment on it → fix until ✅
    python3 -m unittest discover -s tests          # security tests
    swiftc -O -target arm64-apple-macos12.0 -o /tmp/dlus macos/main.swift
    ```
-4. **Update the docs** when behaviour changes (`README.md`, `docs/USER-GUIDE.md`, `SECURITY.md`).
-5. **Never commit personal data**: IP addresses, keys, codes, hostnames, file paths, or screenshots that show them.
+4. **Add tests**: new functionality, and every bug or security fix, comes with a test in [`tests/`](tests/) (standard `unittest`) - or a [fuzz target](fuzz/) for a new parser of outside input. Pull requests without tests for new behaviour are not merged.
+5. **Update the docs** when behaviour changes (`README.md`, `docs/USER-GUIDE.md`, `SECURITY.md`).
+6. **Never commit personal data**: IP addresses, keys, codes, hostnames, file paths, or screenshots that show them.
 
 ### 🤖 What happens on your pull request
 

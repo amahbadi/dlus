@@ -112,4 +112,13 @@ Each release also carries `dlus-<version>.dmg.sigstore.json` (the Sigstore signa
 
 ## 📮 Reporting a problem
 
-Please report it privately: **Security → Report a vulnerability** on this repository ([link](https://github.com/amahbadi/dlus/security/advisories/new)). Do not open a public issue for security problems. Fixes are released as a new DMG.
+Please report it privately: **Security → Report a vulnerability** on this repository ([link](https://github.com/amahbadi/dlus/security/advisories/new)). Do not open a public issue for security problems.
+
+| Step | When |
+|---|---|
+| ✉️ We confirm we received your report | within **7 days** |
+| 🔍 We tell you whether we can reproduce it, and the plan | within **14 days** |
+| 🛠️ Fix released as a new version | as soon as possible; **within 60 days** for confirmed vulnerabilities, sooner for critical ones |
+| 📣 Public advisory and credit (if you want it) | when the fix is released, listed in the [changelog](CHANGELOG.md) |
+
+Only the latest release gets security fixes - please update.
