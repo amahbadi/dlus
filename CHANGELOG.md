@@ -7,9 +7,10 @@
 
 ## Unreleased
 
+- 🐛 Proxy: a local web server is no longer mistaken for a VPN app's proxy (only a real proxy answer counts)
 - 🐛 Proxy: a malformed CONNECT request is answered with 400 instead of crashing its connection handler
 - 🐛 Styled subtitles (LG player): a line could start up to a second early when its time rounded up (same fix as 7.27, for the styled format)
-- 🧪 Test suite for the download engine, the local API, the home-network server and media (ffmpeg): coverage 17 % → 66 % (incl. a fake LG TV and the proxy end to end)
+- 🧪 Test suite for the download engine, the local API, the home-network server and media (ffmpeg): coverage 17 % → 76 % (incl. a fake LG TV, a fake DLNA TV, fake VPN-app proxies and the proxy end to end); coverage badge
 - 🔔 A device asking for access is named by its network name (e.g. *iPad*, *PS5*) instead of "Unknown device" when dlus knows it
 - 🧪 Tests never send real macOS notifications
 

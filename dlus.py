@@ -1115,7 +1115,7 @@ def proxy_kind(host, port):
         with socket.create_connection((host, port), 2) as c:
             c.sendall(b"CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n")
             c.settimeout(3)
-            if c.recv(64).startswith(b"HTTP/1."):
+            if re.match(rb"HTTP/1\.[01] (200|407)\b", c.recv(64)):  # a proxy (tunnel opened, or asks for a password) - not any web server
                 return "http"
     except OSError:
         pass
