@@ -38,8 +38,16 @@ jobs:
           if [ -d tests ]; then python3 -m unittest discover -s tests; fi  # older tags have no tests yet
       - name: Build dlus.app and DMG (universal, ad-hoc signed)
         run: bash macos/build_dmg.sh
-      - name: Checksums
-        run: cd dist && shasum -a 256 dlus-*.dmg > SHA256SUMS && cat SHA256SUMS
+      - name: Checksums (DMG) and the app's file list (for rebuilding it yourself)
+        run: |
+          cd dist && shasum -a 256 dlus-*.dmg > SHA256SUMS && cat SHA256SUMS
+          {
+            echo "# dlus.app - SHA-256 of every file. Rebuild from this tag with the toolchain below and compare (docs/REPRODUCIBLE.md)"
+            echo "# $(swiftc --version 2>&1 | head -1)"
+            echo "# macOS $(sw_vers -productVersion), $(xcrun --show-sdk-version 2>/dev/null | sed 's/^/SDK /')"
+            (cd dlus.app && find . -type f | LC_ALL=C sort | xargs shasum -a 256)
+          } > dlus.app.sha256
+          cat dlus.app.sha256
       - name: Build provenance (proves the DMG was built here, from this tag)
         id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -65,3 +73,4 @@ jobs:
             dist/dlus-*.dmg.sigstore.json
             dist/dlus-*.dmg.intoto.jsonl
             dist/SHA256SUMS
+            dist/dlus.app.sha256

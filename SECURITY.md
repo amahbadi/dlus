@@ -108,6 +108,8 @@ gh attestation verify dlus-7.24.dmg --repo amahbadi/dlus   # proves it was built
 shasum -a 256 -c SHA256SUMS                                # matches the checksum published with the release
 ```
 
+Rebuild it yourself and compare, file by file: [docs/REPRODUCIBLE.md](docs/REPRODUCIBLE.md).
+
 Each release also carries `dlus-<version>.dmg.sigstore.json` (the Sigstore signature bundle, for offline checks with `gh attestation verify --bundle` or `cosign`) and `dlus-<version>.dmg.intoto.jsonl` (the SLSA build provenance).
 
 ## 📮 Reporting a problem
