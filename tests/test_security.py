@@ -138,5 +138,17 @@ class RootHelper(unittest.TestCase):
             subprocess.run(["bash", "-n", os.path.join(ROOT, f)], check=True)
 
 
+class LicenseHeaders(unittest.TestCase):
+    def test_every_source_file_has_license_and_copyright(self):
+        out = subprocess.run(["git", "ls-files", "*.py", "*.sh", "*.swift", "gateway/dlus-gw", "macos/uninstall.command"],
+                             cwd=ROOT, capture_output=True, text=True).stdout.split()
+        if not out:
+            self.skipTest("not a git checkout")
+        for f in out:
+            head = "".join(open(os.path.join(ROOT, f), encoding="utf-8").readlines()[:15])
+            self.assertIn("SPDX-License-Identifier: MIT", head, f)
+            self.assertIn("Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors", head, f)
+
+
 if __name__ == "__main__":
     unittest.main()
