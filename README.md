@@ -39,7 +39,7 @@ So I wrote a small script that downloads in many parts and checks every piece. T
 - **TV home page**: browse your films and shared folders on the TV with a 6-character code
 
 **Subtitles**
-- Search online (best match for your exact release first), add your own files
+- Search online: every subtitle gets a match score for your exact release (★ 100 % = made for your very file), best first; add your own files too
 - **Auto sync** from the film's speech: fixes shifts, wrong frame rates (25 vs 23.976 fps) and subtitles made for another cut - and tells you when a subtitle belongs to another version
 - One look (font, size, colour) for every film, Persian / Arabic fonts included
 
@@ -58,7 +58,8 @@ So I wrote a small script that downloads in many parts and checks every piece. T
 | <img src="docs/screenshots/downloads.png" alt="Downloads"><br>**Downloads** - many connections, every piece checked | <img src="docs/screenshots/tv-remote.png" alt="TV and remote"><br>**TV & remote** - Magic Remote layout, apps, inputs, typing |
 | <img src="docs/screenshots/player-subtitles.png" alt="Subtitles"><br>**Subtitles** - styles, sync, auto sync, online search | <img src="docs/screenshots/player-info.png" alt="Player info"><br>**What is playing** - original picture, sound, subtitle |
 | <img src="docs/screenshots/tv-home.png" alt="TV home page"><br>**TV home page** - films and shared folders on the TV | <img src="docs/screenshots/tv-folder.png" alt="Shared folder on the TV"><br>**Shared folder** on the TV |
-| <img src="docs/screenshots/play-on-tv.png" alt="Play on TV"><br>**Play on TV** - LG's own player or the dlus player | <img src="docs/screenshots/autosync.png" alt="Subtitle auto sync"><br>**Auto sync** - subtitle fitted to the film's speech |
+| <img src="docs/screenshots/find-subtitles.png" alt="Find subtitles"><br>**Find subtitles** - every match scored, the exact release first | <img src="docs/screenshots/autosync.png" alt="Subtitle auto sync"><br>**Auto sync** - subtitle fitted to the film's speech |
+| <img src="docs/screenshots/play-on-tv.png" alt="Play on TV"><br>**Play on TV** - LG's own player or the dlus player | |
 | <img src="docs/screenshots/vpn-router.png" alt="VPN router"><br>**VPN router** - send the TV through the Mac's VPN | <img src="docs/screenshots/vpn-setup.png" alt="VPN setup"><br>**Guided VPN setup** - with a live check |
 | <img src="docs/screenshots/sharing.png" alt="Sharing"><br>**Sharing** - folders, DLNA, proxy, QR links | <img src="docs/screenshots/devices.png" alt="Devices and viewers"><br>**Devices & viewers** - who watches what |
 | <img src="docs/screenshots/fonts.png" alt="Fonts"><br>**Fonts** - Persian / Arabic subtitle fonts | <img src="docs/screenshots/settings.png" alt="Settings"><br>**Settings** |

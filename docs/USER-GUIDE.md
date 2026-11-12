@@ -100,7 +100,21 @@ Controls (remote: ◀ ▶ to move, OK to choose; mouse: hover and click; Mac key
 ## 6. Subtitles
 
 **Add**
-- **Find online**: searches subtitle sites for your exact release; best match first. OK adds it and shows it.
+- **Find online** (Subtitles menu &rarr; *Find online*, or the subtitle search on the Mac): searches subf2m and OpenSubtitles for the film and lists every subtitle with a **match score**, best first. OK adds the chosen one, shows it and syncs it.
+
+  ![Find subtitles](screenshots/find-subtitles.png)
+
+  How the score works - the subtitle's release name is compared with your file's name:
+
+  | Part of the release name | Weight | Example |
+  |---|---|---|
+  | release group (who made the video file) | most | `...-GROUP` - same group = made from the very same file |
+  | resolution | high | `2160p`, `1080p` |
+  | source | medium | `BluRay`, `Remux` (close relatives count half), `WEB-DL` |
+  | HDR / not HDR | low | `HDR`, `DV` |
+  | video codec | low | `x265 / HEVC`, `x264` |
+
+  **★ 100 %** means the subtitle was made for exactly your release - it is almost always in sync already. Lower scores are for other releases of the same film; they usually work too after **Auto sync**, unless they were made for another cut (Auto sync then says so).
 - **Add file** (Mac): `.srt .ass .ssa .vtt .sub` or a `.zip` with one. The same file twice is recognised and not added again.
 - Subtitles inside the video file are listed too (text ones; image subtitles cannot be shown).
 
