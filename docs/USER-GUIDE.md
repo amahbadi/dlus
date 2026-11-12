@@ -267,6 +267,9 @@ Devices are named by their network names (Bonjour / your router); unnamed phones
 
 **Settings** (<kbd>⌘</kbd><kbd>,</kbd>): download folder, downloads at the same time, connections, speed limit, limit while watching, schedule, what to do when all downloads are done, notifications, open dlus in window or browser.
 
+> [!NOTE]
+> **Unencrypted remote control for older TVs** is off. Turn it on only if your LG TV is from before about 2018 and *Connect* says its encrypted remote-control service cannot be reached.
+
 🔔 The bell (top right) collects notifications: finished downloads, new devices, errors. The same events appear in the macOS Notification Center with the dlus logo (macOS asks once to allow them; change it in *System Settings → Notifications → dlus*). Turn them off in Settings.
 
 ## ⌨️ 13. Keyboard shortcuts

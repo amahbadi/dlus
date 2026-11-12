@@ -63,7 +63,7 @@
 - **Only private addresses** (your home network) are answered. Shared folders cannot be escaped with `../`, hidden files (`.ssh`, `.git` ...) are never served, and system folders, `~/Library`, `~/.ssh` and the dlus settings folder cannot be shared at all.
 - **The proxy** asks for a password (on by default) and for approval. It never lets a device reach this Mac itself (the dlus window or other local services), also not through a DNS name that points back to the Mac.
 - **TV discovery** only talks to the device that answered, over plain `http`, so a device on the network cannot point dlus at local files or at another machine.
-- **The LG TV connection is pinned.** The TV's remote-control port uses a self-signed certificate. dlus remembers that certificate when you pair, refuses the connection if it ever changes (someone listening in), and never falls back to the unencrypted port once a TV used the encrypted one. **Forget** on the TV page removes the pairing.
+- **The LG TV connection is pinned.** The TV's remote-control port uses a self-signed certificate. dlus remembers that certificate when you pair, refuses the connection if it ever changes (someone listening in), and never falls back to the unencrypted port once a TV used the encrypted one. The unencrypted port (only needed by LG TVs made before about 2018) is **off by default**: *Settings → Unencrypted remote control for older TVs*. **Forget** on the TV page removes the pairing.
 
 ## 🛡️ The VPN router: what runs as root
 
@@ -125,4 +125,4 @@ Please report it privately: **Security → Report a vulnerability** on this repo
 
 **How we handle a report:** the maintainer reproduces it privately, rates its severity, prepares the fix with a regression test in a private fork of the advisory, releases a new version, then publishes a GitHub security advisory (with a CVE when it applies) and the changelog entry. Reporters are **credited by name** in the advisory and the [changelog](CHANGELOG.md) unless they ask to stay anonymous.
 
-Only the latest release gets security fixes - please update. Design and threat model: [docs/ASSURANCE-CASE.md](docs/ASSURANCE-CASE.md).
+Only the latest release gets security fixes - please update. Design and threat model: [docs/ASSURANCE-CASE.md](docs/ASSURANCE-CASE.md) · latest security review and its findings: [docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md).

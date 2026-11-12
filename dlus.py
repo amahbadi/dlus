@@ -61,7 +61,7 @@ import zlib
 from xml.sax.saxutils import escape as xesc
 
 PORT = 8642
-VERSION = "7.29"
+VERSION = "7.30"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))  # ~/Desktop/dlus, or dlus.app/Contents/Resources when installed
 ICON_DIR = os.path.join(APP_DIR, "icons")
 APP_HEAD = ('<link rel=manifest href="/manifest.webmanifest"><link rel=icon type=image/png sizes=192x192 href="/icon-192.png">'
@@ -1555,8 +1555,8 @@ class TVCertChanged(OSError):
 class WebOSTV:
     """minimal WebSocket client for webOS (ws :3000 / wss :3001). Pairing = one 'Allow' on the TV, then a stored key."""
 
-    def __init__(self, ip, key="", pin=""):
-        self.ip, self.key, self.n = ip, key or "", 0
+    def __init__(self, ip, key="", pin="", allow_plain=False):
+        self.ip, self.key, self.n, self.allow_plain = ip, key or "", 0, allow_plain
         self.pin, self.seen_pin = pin or "", ""  # "tls:<sha256 of the TV's certificate>" or "plain" (old TVs), fixed at pairing
         self.sock, self.rest, self.btn = None, b"", None
         self.lock = threading.Lock()
@@ -1636,7 +1636,9 @@ class WebOSTV:
     def connect(self, wait=60):
         last = None
         # a TV paired over the encrypted port is never contacted unencrypted again (nobody can force a downgrade)
-        for port, tls in ((3001, True),) if self.pin.startswith("tls:") else ((3001, True), (3000, False)):
+        # encrypted only, unless the user allowed the unencrypted port for an older TV - and never after the TV used TLS
+        plain = self.allow_plain and not self.pin.startswith("tls:")
+        for port, tls in ((3001, True), (3000, False)) if plain else ((3001, True),):
             try:
                 self.sock, self.rest = self._ws(self.ip, port, tls)
                 break
@@ -1645,6 +1647,9 @@ class WebOSTV:
             except (OSError, ssl.SSLError) as e:
                 last = e
         else:
+            if not plain:
+                raise OSError("cannot reach the TV's encrypted remote-control service (%s). Older LG TVs (before 2018) have only an "
+                              "unencrypted one: allow it in Settings - 'Unencrypted remote control for older TVs'" % last)
             raise OSError("cannot reach the TV's remote-control service: %s" % last)
         payload = {"forcePairing": False, "pairingType": "PROMPT", "manifest": DLUS_MANIFEST}
         if self.key:
@@ -4031,7 +4036,7 @@ class Manager:
         if c and c.sock:
             return tv, c
         pins = self.settings.setdefault("tv_pins", {})
-        c = WebOSTV(tv["ip"], (self.settings.get("tv_keys") or {}).get(tvid, ""), pins.get(tvid, ""))
+        c = WebOSTV(tv["ip"], (self.settings.get("tv_keys") or {}).get(tvid, ""), pins.get(tvid, ""), bool(self.settings.get("tv_plain")))
         try:
             key = c.connect(wait=60)
         except TVCertChanged as e:
@@ -4381,7 +4386,9 @@ class Manager:
         if s.get("proxy_newpass"):
             self.settings["proxy_pass"] = short_code(8)
             self.audit("new proxy password made")
-        for k in ("sched_on", "notify", "lan_on", "dlna_on"):
+        if "tv_plain" in s and bool(s["tv_plain"]) != bool(self.settings.get("tv_plain")):
+            self.audit("unencrypted TV remote control (older TVs) turned " + ("on" if s["tv_plain"] else "off"), level="warn" if s["tv_plain"] else "info")
+        for k in ("sched_on", "notify", "lan_on", "dlna_on", "tv_plain"):
             if k in s:
                 self.settings[k] = bool(s[k])
         if s.get("rotate_token"):
@@ -7283,6 +7290,7 @@ video,audio{width:100%;max-height:62vh;background:#000;display:block;outline:non
  <div class=two>
   <div><label>When the queue is finished</label><select class=in id=sdone><option value=none>Do nothing</option><option value=sleep>Put the Mac to sleep</option></select></div>
   <div><label>&nbsp;</label><label class=ck style="margin-top:4px"><input type=checkbox id=snot> macOS notifications</label></div>
+  <div><label>&nbsp;</label><label class=ck style="margin-top:4px" title="Only for LG TVs made before 2018 that have no encrypted remote-control port. Off: dlus talks to the TV encrypted only."><input type=checkbox id=splain> Unencrypted remote control for older TVs</label></div>
  </div>
  <div class=ft><button class=btn onclick="closeM()">Cancel</button><button class="btn pri" onclick="doSet()">Save</button></div>
 </div></div>
@@ -8442,12 +8450,12 @@ function doAdd() {
 function openSet() {
   closeCmd(); var s = ST.settings; $("sdir").value = s.base_dir; $("smax").value = s.max_active; $("sconns").value = s.conns; $("slim").value = s.limit_mb || 0;
   $("swatch").value = s.watch_limit_mb != null ? s.watch_limit_mb : 1; $("suiopen").value = s.ui_open || "app";
-  $("son").checked = !!s.sched_on; $("sfrom").value = s.sched_from; $("sto").value = s.sched_to; $("sdone").value = s.on_done || "none"; $("snot").checked = s.notify !== false;
+  $("son").checked = !!s.sched_on; $("sfrom").value = s.sched_from; $("sto").value = s.sched_to; $("sdone").value = s.on_done || "none"; $("snot").checked = s.notify !== false; $("splain").checked = !!s.tv_plain;
   show("mset");
 }
 function doSet() {
   api("/api/settings", { base_dir: $("sdir").value, max_active: $("smax").value, conns: $("sconns").value, limit_mb: $("slim").value, watch_limit_mb: $("swatch").value,
-    sched_on: $("son").checked, sched_from: $("sfrom").value, sched_to: $("sto").value, on_done: $("sdone").value, notify: $("snot").checked, ui_open: $("suiopen").value })
+    sched_on: $("son").checked, sched_from: $("sfrom").value, sched_to: $("sto").value, on_done: $("sdone").value, notify: $("snot").checked, tv_plain: $("splain").checked, ui_open: $("suiopen").value })
     .then(function () { closeM(); toast("Settings saved"); poll() }).catch(function (e) { toast("Error: " + e.message) });
 }
 function doDel(files) { var id = CUR; closeM(); act(id, "delete", { files: files }).then(function () { delete OPEN[id]; toast(files ? "Deleted with files" : "Removed from list") }) }

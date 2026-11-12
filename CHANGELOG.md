@@ -5,6 +5,13 @@
 > [!NOTE]
 > Security fixes are marked 🔒. dlus has had no publicly known vulnerabilities so far; the fixes below were found by our own review and scanners.
 
+## 7.30 - 2026-11-13
+
+- 📝 Written [security review](docs/SECURITY-REVIEW.md): scope, method, every finding and fix, accepted risks
+
+- 🔒 The unencrypted LG remote-control port (only for TVs made before about 2018) is off by default; turn it on in Settings if an older TV needs it
+- 🤖 The coverage badge retries when GitHub answers with a temporary error
+
 ## 7.29 - 2026-11-13
 
 - 🔁 Reproducible: each release lists the SHA-256 of every file in the app and the toolchain, so anyone can rebuild and compare ([docs/REPRODUCIBLE.md](docs/REPRODUCIBLE.md))

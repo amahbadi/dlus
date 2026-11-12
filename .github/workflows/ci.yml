@@ -86,4 +86,8 @@ jobs:
           mkdir pub && cd pub && git init -q -b badges && cp ../badge.json coverage.json
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" add coverage.json
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "coverage badge"
-          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" badges
+          for i in 1 2 3 4 5; do  # GitHub sometimes answers a push with a temporary 500
+            git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" badges && exit 0
+            sleep $((i * 10))
+          done
+          exit 1

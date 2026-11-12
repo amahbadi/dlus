@@ -364,11 +364,29 @@ class TVProtocol(unittest.TestCase):
         self.assertIn("denied", str(e.exception))
 
     def test_unreachable_tv(self):
+        tried = []
+
+        def refuse(host, port, tls, path="/"):
+            tried.append((port, tls))
+            raise OSError("refused")
         c = dlus.WebOSTV("127.0.0.1")
-        with mock.patch.object(c, "_ws", side_effect=OSError("refused")):
+        with mock.patch.object(c, "_ws", refuse):
             with self.assertRaises(OSError) as e:
                 c.connect(wait=1)
-        self.assertIn("cannot reach", str(e.exception))
+        self.assertEqual(tried, [(3001, True)])  # 7.30: never the unencrypted port unless the user allowed it
+        self.assertIn("Unencrypted remote control for older TVs", str(e.exception))
+        tried.clear()
+        c = dlus.WebOSTV("127.0.0.1", allow_plain=True)
+        with mock.patch.object(c, "_ws", refuse):
+            with self.assertRaises(OSError):
+                c.connect(wait=1)
+        self.assertEqual(tried, [(3001, True), (3000, False)])
+        tried.clear()
+        c = dlus.WebOSTV("127.0.0.1", pin="tls:abc", allow_plain=True)  # a TV that used TLS: never unencrypted again
+        with mock.patch.object(c, "_ws", refuse):
+            with self.assertRaises(OSError):
+                c.connect(wait=1)
+        self.assertEqual(tried, [(3001, True)])
 
 
 class RouterLogic(unittest.TestCase):

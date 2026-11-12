@@ -326,6 +326,8 @@ class SettingsErrors(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.set_settings({"proxy_upstream": "ftp://nope"})
         m.set_settings({"ui_open": "browser", "tv_quality": "1080", "lan_port": 18999})
+        m.set_settings({"tv_plain": True})
+        self.assertTrue(any("unencrypted TV remote control" in x["event"] for x in m.audit_log))
         self.assertEqual(m.settings["lan_port"], 18999)
 
 

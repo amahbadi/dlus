@@ -170,7 +170,7 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome - see **[CONTRIBUTING.md](CONTRIBUTING.md)** · [Code of Conduct](CODE_OF_CONDUCT.md) · [Governance](GOVERNANCE.md) · [Architecture](docs/ARCHITECTURE.md) · [Assurance case](docs/ASSURANCE-CASE.md)
+Issues and pull requests are welcome - see **[CONTRIBUTING.md](CONTRIBUTING.md)** · [Code of Conduct](CODE_OF_CONDUCT.md) · [Governance](GOVERNANCE.md) · [Architecture](docs/ARCHITECTURE.md) · [Assurance case](docs/ASSURANCE-CASE.md) · [Security review](docs/SECURITY-REVIEW.md)
 
 ```text
 fork → branch → pull request → 🤖 security checks comment on it → fix until ✅ → maintainer review → merge
