@@ -32,4 +32,4 @@ There are no accounts, no analytics and no telemetry. dlus never sends your file
 
 ## Reporting a problem
 
-Please open a GitHub issue without exploit details, and ask for a private contact. Fixes are released as a new DMG.
+Please report it privately: **Security → Report a vulnerability** on this repository ([link](https://github.com/amahbadi/dlus/security/advisories/new)). Do not open a public issue for security problems. Fixes are released as a new DMG.
