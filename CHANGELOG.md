@@ -5,6 +5,11 @@
 > [!NOTE]
 > Security fixes are marked 🔒. dlus has had no publicly known vulnerabilities so far; the fixes below were found by our own review and scanners.
 
+## Unreleased
+
+- 🔒 **Integrity:** a piece that was already checked against the server but then changed on disk before joining (disk error, another program) went into the finished file unnoticed. Every checked piece now keeps a SHA-256 fingerprint that is verified while joining; a changed piece is downloaded again by itself
+- 🧹 Removed code that could never run: an unused styled-subtitle (ASS) writer, an old folder listing after a `return`, an empty font loop. The 7.28 note about styled-subtitle rounding concerned that unused writer and changed nothing for users
+
 ## 7.28 - 2026-11-13
 
 - 🐛 Find TVs without a network (Wi-Fi off, no multicast route) reports no TVs instead of failing with "No route to host"

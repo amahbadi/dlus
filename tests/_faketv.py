@@ -26,6 +26,7 @@ class FakeTV:
         self.requests = []  # every uri dlus asked for
         self.texts = []  # pointer socket messages (buttons)
         self.key = "FAKE-CLIENT-KEY"
+        self.refuse = set()  # uris answered with an error (like LG refusing remote apps some commands)
         self.use_cert("lgtv-1")
         self.sock = socket.socket()
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -109,6 +110,9 @@ class FakeTV:
             return
         uri = msg.get("uri", "")
         self.requests.append(uri)
+        if any(uri.endswith(x) for x in self.refuse):
+            self.send(s, {"type": "error", "id": msg.get("id"), "error": "401 insufficient permissions"})
+            return
         p = {"returnValue": True}
         if uri.endswith("getForegroundAppInfo"):
             p.update(appId="com.webos.app.livetv", windowId="")

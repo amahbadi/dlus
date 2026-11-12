@@ -406,6 +406,16 @@ class OneLineFormatter(logging.Formatter):
         return super().formatMessage(record).replace("\r", "\\r").replace("\n", "\\n")
 
 
+def file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            b = f.read(8 << 20)
+            if not b:
+                return h.hexdigest()
+            h.update(b)
+
+
 def logsafe(v, n=300):
     """a value from the network, safe for one log line (no forged lines)"""
     return str(v)[:n].replace("\r", "\\r").replace("\n", "\\n")
@@ -690,21 +700,6 @@ def fetch_fonts():
                 install_font(name)
             except ValueError:
                 log.warning("font download failed: %s", name)
-    for base, reg, bold in ():
-        for f in (reg, bold):
-            dst = os.path.join(fonts_dir(), f)
-            if fsize(dst) > 1000:
-                continue
-            try:
-                req = urllib.request.Request(base + f, headers={"User-Agent": "dlus/" + VERSION})
-                # security scan: fixed https font URL
-                data = urllib.request.urlopen(req, timeout=30).read(2 << 20)  # nosec B310
-                if data[:4] == b"wOF2":
-                    with open(dst + ".tmp", "wb") as o:
-                        o.write(data)
-                    os.replace(dst + ".tmp", dst)
-            except OSError:
-                log.warning("font download failed: %s", f)
 
 
 def font_css(m=None):
@@ -724,47 +719,6 @@ def font_css(m=None):
 
 def fonts_js(m):
     return "var DLUS_FONTS = %s;\n" % json.dumps([[n, n] for n in font_names(m)] + [["system", "System font"]])
-
-
-def styled_ass(vtt_path, style, delay):
-    """subtitle as ASS with the chosen font, colour, size, outline/box and position (for the TV's own player)"""
-    font = style.get("font") if style.get("font") in FONTS else "Vazirmatn"
-    key = hashlib.sha1(json.dumps([vtt_path, os.path.getmtime(vtt_path), style, delay], sort_keys=True).encode(), usedforsecurity=False).hexdigest()[:12]
-    out = os.path.join(os.path.dirname(vtt_path), "styled-%s.ass" % key)
-    if os.path.exists(out):
-        return out, font
-    c = (style.get("color") or "#ffffff").lstrip("#")
-    col = "&H00%s%s%s" % (c[4:6], c[2:4], c[0:2]) if len(c) == 6 else "&H00FFFFFF"
-    bg = style.get("bg") or "shadow"
-    bs, ol, sh, back = {"box": (3, 2, 0, "&H30000000"), "soft": (3, 2, 0, "&H90000000"), "none": (1, 0, 0, "&H00000000")}.get(bg, (1, 3.2, 1.2, "&H80000000"))
-    fs = round(float(style.get("size") or 5.2) * 1080 / 100 * 1.08)
-    mv = round(float(style.get("pos") or 7) * 1080 / 100)
-    bold = -1 if style.get("bold", True) else 0
-
-    def ts(x):
-        cs = round(max(0.0, x) * 100)  # whole centiseconds first, so 1.996 s becomes 0:00:02.00 (not 0:00:01.00)
-        return "%d:%02d:%02d.%02d" % (cs // 360000, cs // 6000 % 60, cs // 100 % 60, cs % 100)
-    lines = ["[Script Info]", "ScriptType: v4.00+", "PlayResX: 1920", "PlayResY: 1080", "WrapStyle: 0", "ScaledBorderAndShadow: yes", "",
-             "[V4+ Styles]", "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, "
-             "StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-             "Style: Default,%s,%d,%s,&H000000FF,&H00000000,%s,%d,0,0,0,100,100,0,0,%d,%s,%s,2,90,90,%d,1" % (font, fs, col, back, bold, bs, ol, sh, mv),
-             "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
-    for blk in re.split(r"\n{2,}", rd(vtt_path).replace("\r", "")):
-        L = blk.split("\n")
-        k = next((i for i, entry in enumerate(L) if "-->" in entry), None)
-        if k is None:
-            continue
-        mm = re.match(r"(?:(\d+):)?(\d+):(\d\d)[.,](\d+)\s*-->\s*(?:(\d+):)?(\d+):(\d\d)[.,](\d+)", L[k].strip())
-        if not mm:
-            continue
-        g = mm.groups()
-        a = int(g[0] or 0) * 3600 + int(g[1]) * 60 + int(g[2]) + int((g[3] + "00")[:3]) / 1000 + delay
-        b = int(g[4] or 0) * 3600 + int(g[5]) * 60 + int(g[6]) + int((g[7] + "00")[:3]) / 1000 + delay
-        txt = "\\N".join(re.sub(r"<[^>]+>", "", entry).strip() for entry in L[k + 1:] if entry.strip())
-        if txt and b > 0:
-            lines.append("Dialogue: 0,%s,%s,Default,,0,0,0,,%s" % (ts(a), ts(b), txt.replace("{", "(").replace("}", ")")))
-    wr(out, "\n".join(lines) + "\n")
-    return out, font
 
 
 def short_code(n=6):
@@ -2697,6 +2651,7 @@ class DL:
                 self.setst(i, "check")
                 rc = self.sample_check(p, start, want, i)
                 if rc == 0:
+                    wr(p + ".sum", file_sha256(p))  # fingerprint of the checked piece: verified again while joining
                     self.setst(i, "ok")
                     self.log("chunk %d: check OK (3 samples match server)" % i)
                     return True
@@ -2809,12 +2764,28 @@ class DL:
                     return
                 f.truncate(i * C)
                 f.seek(i * C)
+                h = hashlib.sha256()
                 with open(self.cpath(i), "rb") as src:
-                    shutil.copyfileobj(src, f, 8 << 20)
+                    while True:
+                        b = src.read(8 << 20)
+                        if not b:
+                            break
+                        h.update(b)
+                        f.write(b)
+                want = rd(self.cpath(i) + ".sum").strip()
+                if want and not secrets.compare_digest(want, h.hexdigest()):
+                    # the piece changed on disk after it was checked (disk error, another program): fetch it again
+                    f.truncate(i * C)
+                    self.setst(i, "bad")
+                    self.r["fails"] = self.r.get("fails", 0) + 1
+                    self.log("chunk %d: CHANGED ON DISK after its check - re-downloading only this chunk" % i)
+                    rm(self.cpath(i), self.cpath(i) + ".sum")
+                    self.r["status"] = "queued"  # the download continues by itself and joins from here
+                    return
                 f.flush()
                 os.fsync(f.fileno())
                 wr(ap, str(i + 1))
-                rm(self.cpath(i))
+                rm(self.cpath(i), self.cpath(i) + ".sum")
                 self.r["msg"] = "joining chunks: %d / %d" % (i + 1, N)
         if fsize(asm) != L:
             return self.fail("joined size %d != %d" % (fsize(asm), L))
@@ -5247,7 +5218,7 @@ def compat_cmd(m, d, fmt, t=0.0, a=0, ch=0, snd=None, quality=None, sub_start=No
     return cmd, info, sub_in
 
 
-def send_compat(h, m, d, fmt, t=0.0, a=0, ch=0, snd=None, seek_hdr=False, quality=None, mkv=False):
+def send_compat(h, m, d, fmt, t=0.0, a=0, ch=0, snd=None, quality=None, mkv=False):
     """video passed through untouched (bit-identical), only the audio is converted on the fly:
     mp4 (computer browsers) = FLAC, lossless, all channels; mkv (TV players) = AAC 5.1 448k;
     tv (TV web browsers) = MP4 with AAC 5.1 (ch=2 for stereo)"""
@@ -6373,18 +6344,6 @@ def make_lan_handler(m):
                         return send_file(self, full)
                     m.sessions.saw(self, "browses the shared folder " + os.path.basename(full))
                     return self.out(200, tv_folder(m, int(parts[3]), "/".join(parts[4:])).encode(), "text/html; charset=utf-8")
-                    base_i = dict(m.share_dirs())[int(parts[3])]
-                    rows = []
-                    for n in sorted(os.listdir(full), key=str.lower):
-                        if n.startswith("."):
-                            continue
-                        rp = os.path.relpath(os.path.join(full, n), base_i)
-                        isd = os.path.isdir(os.path.join(full, n))
-                        rows.append("<tr><td>%s</td><td><a href='/%s/files/sdir/%s/%s%s'>%s</a></td><td>%s</td></tr>" % (
-                            "&#128193;" if isd else "&#127916;" if category(n) == "Video" else "&#128196;", m.settings["lan_token"], parts[3],
-                            urllib.parse.quote(rp), "/" if isd else "", xesc(n), "" if isd else "%.1f MB" % (fsize(os.path.join(full, n)) / 2 ** 20)))
-                    t = xesc(os.path.basename(full))
-                    return self.out(200, (FILES_HTML % (t, t, "<table>%s</table>" % "".join(rows))).encode(), "text/html; charset=utf-8")
                 rel = "/".join(parts[3:]) if len(parts) > 2 and parts[2] == "dir" else ""
                 if len(parts) > 2 and parts[2] == "dir" and not rel:
                     rel = "."
@@ -6440,7 +6399,7 @@ def make_lan_handler(m):
                         if ts:  # TV seek bar: npt=SS.sss- or npt=HH:MM:SS.sss-
                             v = ts.group(1).split(":")
                             t0 = sum(float(x) * 60 ** i for i, x in enumerate(reversed(v)))
-                        return send_compat(self, m, d, "mkv" if mm.group(2) == "s" else "mkvsub", t0, seek_hdr=bool(ts), quality=(q.get("q") or [None])[0])
+                        return send_compat(self, m, d, "mkv" if mm.group(2) == "s" else "mkvsub", t0, quality=(q.get("q") or [None])[0])
                     log.info("media %s raw %s range=%s ua=%s", self.client_address[0], d.r["num"], logsafe(self.headers.get("Range", "-")), logsafe(self.headers.get("User-Agent") or "", 60))
                     return send_stream(self, d, lan=True)
             if parts[0] == m.settings.get("lan_token") and len(parts) >= 2:

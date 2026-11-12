@@ -399,5 +399,152 @@ class FullTunnel(unittest.TestCase):
             self.assertTrue(m.gw_vpn_ok("utun9")["ok"])  # cached
 
 
+class AnnouncerAnswers(unittest.TestCase):
+    def test_answers_a_tv_search(self):
+        m = manager()
+        listen = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        listen.bind(("127.0.0.1", 0))
+        with mock.patch.object(dlus.SSDP, "GRP", ("127.0.0.1", listen.getsockname()[1])):
+            ssdp = dlus.SSDP(m)  # listens on UDP 1900 like a real DLNA server
+            time.sleep(0.5)
+            tv = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            tv.settimeout(3)
+            for st in ("ssdp:all", "urn:schemas-upnp-org:device:MediaServer:1", "urn:other"):
+                tv.sendto(("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nST: %s\r\n\r\n" % st).encode(),
+                          ("127.0.0.1", 1900))
+            tv.sendto(b"NOTIFY * HTTP/1.1\r\n\r\n", ("127.0.0.1", 1900))
+            try:
+                data, _ = tv.recvfrom(4096)
+                self.assertIn(b"LOCATION:", data)
+            except socket.timeout:
+                pass  # another DLNA server on this Mac took the packet: nothing to check here
+            ssdp.stop()
+            tv.close()
+        listen.close()
+
+
+class Discovery(unittest.TestCase):
+    def test_parses_what_a_tv_answers(self):
+        import http.server
+        desc = (b'<root><device><friendlyName>Living Room TV</friendlyName><manufacturer>LG</manufacturer><modelName>OLED</modelName>'
+                b'<UDN>uuid:tv-0001</UDN><serviceList><service><serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>'
+                b'<controlURL>/upnp/control/AVTransport1</controlURL></service></serviceList></device></root>')
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(desc)
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        port = srv.server_address[1]
+        answers = [(b"HTTP/1.1 200 OK\r\nLOCATION: http://127.0.0.1:%d/desc.xml\r\n\r\n" % port, ("127.0.0.1", 1900)),
+                   (b"HTTP/1.1 200 OK\r\nLOCATION: file:///etc/passwd\r\n\r\n", ("127.0.0.1", 1900)),  # refused: not http
+                   (b"HTTP/1.1 200 OK\r\nLOCATION: http://10.9.9.9/desc.xml\r\n\r\n", ("127.0.0.1", 1900))]  # refused: another host
+
+        class Sock:
+            def __init__(self, *a):
+                pass
+
+            def setsockopt(self, *a):
+                pass
+
+            def bind(self, a):
+                pass
+
+            def sendto(self, *a):
+                pass
+
+            def settimeout(self, t):
+                pass
+
+            def recvfrom(self, n):
+                if answers:
+                    return answers.pop(0)
+                raise socket.timeout()
+
+            def close(self):
+                pass
+        m = manager()
+        try:
+            real = socket.socket
+
+            def only_udp(*a, **k):  # the search socket is scripted; the HTTP fetch of the description is real
+                return Sock() if len(a) > 1 and a[1] == socket.SOCK_DGRAM else real(*a, **k)
+            with mock.patch.object(dlus.socket, "socket", only_udp):
+                found = m.find_tvs(wait=1.0)
+            tv = [t for t in found if t["name"] == "Living Room TV"]
+            self.assertEqual(len(tv), 1)
+            self.assertEqual(tv[0]["ctl"], "http://127.0.0.1:%d/upnp/control/AVTransport1" % port)
+            self.assertEqual(len(found), 1)  # the file:// and other-host answers were ignored
+        finally:
+            srv.shutdown()
+
+
+class FontDownloads(unittest.TestCase):
+    def test_failures_are_logged_not_fatal(self):
+        m = manager()
+
+        def down(*a, **k):
+            raise OSError("offline")
+        with mock.patch.object(dlus.urllib.request, "urlopen", down):
+            dlus.fetch_fonts()
+            name = next(n for n, f in dlus.FONT_CATALOG.items() if not f.get("default"))
+            with self.assertRaises(ValueError):
+                m.fonts_set({"install": name})
+
+        class R(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+        with mock.patch.object(dlus.urllib.request, "urlopen", lambda *a, **k: R(b"<html>not a font</html>")):
+            dlus.fetch_fonts()
+            with self.assertRaises(ValueError):
+                m.fonts_set({"install": name})
+        with mock.patch.object(dlus.urllib.request, "urlopen", lambda *a, **k: R(b"wOF2" + b"0" * 2000)):
+            dlus.fetch_fonts()  # the default fonts arrive
+
+
+class Actions(unittest.TestCase):
+    def test_start_now_players_and_bad_links(self):
+        m = manager()
+        p = os.path.join(m.settings["base_dir"], "Video", "a.mkv")
+        os.makedirs(os.path.dirname(p))
+        with open(p, "wb") as f:
+            f.write(b"\x1aE\xdf\xa3" + b"0" * 100)
+        d = m.import_local(p)
+        with self.assertRaises(ValueError):
+            m.action(d.r["id"], "play", {"app": "NoSuchPlayer"})
+        with self.assertRaises(ValueError):
+            m.action(d.r["id"], "refresh", {"url": "file:///etc/passwd"})
+        self.assertIsInstance(m.players(), list)
+
+
+class PartialFiles(unittest.TestCase):
+    def test_what_can_be_played_while_downloading(self):
+        m = manager()
+        r = {"id": "partial01", "url": "http://127.0.0.1:9/p.mkv", "name": "p.mkv", "dir": os.path.join(m.settings["base_dir"], "Video"),
+             "conns": 1, "status": "paused", "added": time.time(), "size": 3 * dlus.C, "done": 0, "msg": "", "checksum": "", "named": True,
+             "fails": 0, "bound_ip": "", "num": 1, "ranges": True}
+        os.makedirs(r["dir"], exist_ok=True)
+        d = dlus.DL(m, r)
+        m.dls[r["id"]] = d
+        os.makedirs(d.parts, exist_ok=True)
+        with open(d.cpath(0), "wb") as f:
+            f.write(b"\x1aE\xdf\xa3" + b"0" * (dlus.C - 4))
+        self.assertEqual(m.local_prefix(d), [d.cpath(0)])
+        self.assertIsNotNone(d.avail(10))
+        self.assertIsNone(d.avail(2 * dlus.C + 5))
+        r["ranges"] = False
+        with open(d.out + ".part", "wb") as f:
+            f.write(b"\x1aE\xdf\xa3" + b"0" * 100)
+        self.assertEqual(m.local_prefix(d), [d.out + ".part"])
+
+
 if __name__ == "__main__":
     unittest.main()

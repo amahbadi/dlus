@@ -147,8 +147,6 @@ class Media(unittest.TestCase):
                 break
             time.sleep(0.2)
         self.assertTrue(path and os.path.exists(path))
-        ass, font = dlus.styled_ass(path, self.m.settings["sub_style"], 0.5)
-        self.assertTrue(os.path.exists(ass))
         st, data = self.get("/%s/%d-subs.json" % (self.tok, self.d.r["num"]))
         self.assertEqual(st, 200)
         res = self.m.subs_action(self.d, "autosync", {"sid": sid})

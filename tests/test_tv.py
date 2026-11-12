@@ -137,6 +137,20 @@ class TV(unittest.TestCase):
         finally:
             del self.m.tv_up
 
+    def test_4c_commands_the_tv_refuses(self):
+        self.act("pair")
+        self.tv.refuse = {"turnOffScreen", "turnOnScreen", "getSystemSettings", "launch", "channelUp"}
+        try:
+            for act, body in (("screen", {"on": False}), ("screen", {"on": True}), ("picture", {}), ("picture", {"open": True}),
+                              ("launch", {"app": "netflix"}), ("button", {"name": "CHANNELUP"}), ("netsettings", {})):
+                try:
+                    r = self.act(act, body)
+                    self.assertIsInstance(r, dict)
+                except ValueError as e:  # refused commands become a clear message, never a crash
+                    self.assertTrue(str(e))
+        finally:
+            self.tv.refuse = set()
+
     def test_4_open_dlus_on_the_tv(self):
         self.act("pair")
         self.act("open", {})

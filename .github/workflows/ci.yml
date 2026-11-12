@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:  # a newer push replaces a still-running check of the same branch (frees the runners)
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
 defaults:
   run:
     shell: bash # -eo pipefail: a failing scanner fails the step even when piped into tee
