@@ -14,6 +14,8 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
+<p align="center"><img src="docs/screenshots/player.png" width="900" alt="The dlus player on an LG TV"></p>
+
 ---
 
 ## Why dlus exists
@@ -48,6 +50,15 @@ So I wrote a small script that downloads in many parts and checks every piece. T
 **Your network**
 - DLNA server, folder sharing, an HTTP proxy (all off until you turn them on)
 - **VPN router** (experimental): send chosen devices - like the TV - through your Mac's VPN, with a guided setup and a live check
+
+## Screenshots
+
+| | |
+|---|---|
+| <img src="docs/screenshots/downloads.png" alt="Downloads"><br>**Downloads** - many connections, every piece checked | <img src="docs/screenshots/tv-remote.png" alt="TV and remote"><br>**TV & remote** - Magic Remote layout, apps, inputs, typing |
+| <img src="docs/screenshots/player-subtitles.png" alt="Subtitles"><br>**Subtitles** - styles, sync, auto sync, online search | <img src="docs/screenshots/player-info.png" alt="Player info"><br>**What is playing** - original picture, sound, subtitle |
+| <img src="docs/screenshots/tv-home.png" alt="TV home page"><br>**TV home page** - films and shared folders on the TV | <img src="docs/screenshots/tv-folder.png" alt="Shared folder on the TV"><br>**Shared folder** on the TV |
+| <img src="docs/screenshots/vpn-router.png" alt="VPN router"><br>**VPN router** - send the TV through the Mac's VPN | <img src="docs/screenshots/network.png" alt="Network and storage"><br>**Network & storage** - connection, VPNs, disk |
 
 ## Install
 
@@ -89,6 +100,10 @@ Other LG webOS TVs (2018 and newer) should work - the remote and the player use 
 - No accounts, no telemetry; dlus talks to the internet only for your downloads and subtitle searches
 
 Details: [SECURITY.md](SECURITY.md) · VPN router: [docs/VPN-ROUTER.md](docs/VPN-ROUTER.md)
+
+## Contributing
+
+Issues and pull requests are welcome - see [CONTRIBUTING.md](CONTRIBUTING.md). Every change goes through a pull request and a review.
 
 ## Build from source
 

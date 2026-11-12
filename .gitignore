@@ -29,5 +29,3 @@ media-key
 .idea/
 .claude/
 
-# screenshots are added only after review
-docs/screenshots/*.png
