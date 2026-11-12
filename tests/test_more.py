@@ -118,6 +118,73 @@ class Downloading(unittest.TestCase):
         m.action("all", "clear", {})
         self.assertNotIn(did, m.dls)
 
+    def start_slow(self, name, size):
+        body = os.urandom(size)
+        self.fs.put(name, body)
+        self.fs.delay = 0.05
+        m = manager()
+        did = m.add(self.fs.url(name), conns=2)
+        run_until(m, did, statuses=("downloading",))
+        time.sleep(0.6)
+        return m, did, body
+
+    def test_file_changed_on_the_server(self):
+        m, did, _ = self.start_slow("changing.mkv", 3 * 1024 * 1024)
+        m.action(did, "pause", {})
+        self.fs.delay = 0.0
+        self.fs.put("changing.mkv", os.urandom(2 * 1024 * 1024))  # another file now
+        m.action(did, "resume", {})
+        d = run_until(m, did, statuses=("error",), timeout=60)
+        self.assertIn("changed", d.r["msg"])
+
+    def test_server_stops_honouring_ranges(self):
+        m, did, body = self.start_slow("noranges-later.mkv", 3 * 1024 * 1024)
+        m.action(did, "pause", {})
+        self.fs.delay = 0.0
+        self.fs.ranges = False  # the server (or a new mirror) no longer answers byte ranges
+        try:
+            m.action(did, "resume", {})
+            d = run_until(m, did, timeout=120)
+            if d.r["status"] == "done":
+                self.assertEqual(open(d.out, "rb").read(), body)
+            else:
+                self.assertIn("range", d.r["msg"])
+        finally:
+            self.fs.ranges = True
+
+    def test_link_expires_then_works_again(self):
+        m, did, body = self.start_slow("expiring.mkv", 3 * 1024 * 1024)
+        m.action(did, "pause", {})
+        os.rename(os.path.join(self.fs.root, "expiring.mkv"), os.path.join(self.fs.root, "gone.mkv"))
+        m.action(did, "resume", {})
+        run_until(m, did, statuses=("waiting",), timeout=60)
+        os.rename(os.path.join(self.fs.root, "gone.mkv"), os.path.join(self.fs.root, "expiring.mkv"))
+        self.fs.delay = 0.0
+        d = run_until(m, did, timeout=120)
+        self.assertEqual(open(d.out, "rb").read(), body)
+
+    def test_schedule_and_watching_limit(self):
+        m, did, _ = self.start_slow("scheduled.mkv", 3 * 1024 * 1024)
+        now = time.localtime()
+        later = "%02d:%02d" % ((now.tm_hour + 2) % 24, now.tm_min)
+        m.set_settings({"sched_on": True, "sched_from": later, "sched_to": "%02d:%02d" % ((now.tm_hour + 3) % 24, now.tm_min)})
+        m.tick()
+        self.assertEqual(m.dls[did].r["status"], "queued")
+        self.assertIn("schedule", m.dls[did].r["msg"])
+        m.set_settings({"sched_on": False, "watch_limit_mb": 1})
+        m.sessions.live[("192.168.5.5", did, "raw")] = {"ip": "192.168.5.5", "ua": "", "device": "LG TV", "kind": "tv", "id": did, "title": "x",
+                                                        "variant": "raw", "start": time.time(), "last": time.time(), "bytes": 400000, "reqs": 1,
+                                                        "frac": 0, "active": 1, "samples": __import__("collections").deque(maxlen=12),
+                                                        "rates": __import__("collections").deque(maxlen=120)}
+        m.tick()
+        self.assertTrue(m.throttled)
+        m.sessions.live[("192.168.5.5", did, "raw")].update(active=0, last=time.time() - 999)
+        m.sessions.tick()
+        self.assertTrue(m.sessions.hist)
+        with self.assertRaises(ValueError):
+            m.set_settings({"sched_on": True, "sched_from": "25 o'clock"})
+        m.action(did, "pause", {})
+
     def test_existing_partial_file_is_adopted(self):
         body = os.urandom(2 * 1024 * 1024 + 5)
         self.fs.put("adopt.bin", body)

@@ -51,6 +51,12 @@ class FileServer:
                         return
                     a = int(rng.group(1))
                     b = min(int(rng.group(2)) if rng.group(2) else L - 1, L - 1)
+                    if a >= L:
+                        self.send_response(416)
+                        self.send_header("Content-Range", "bytes */%d" % L)
+                        self.send_header("Content-Length", "0")
+                        self.end_headers()
+                        return
                     self.send_response(206)
                     self.send_header("Content-Range", "bytes %d-%d/%d" % (a, b, L))
                 else:
