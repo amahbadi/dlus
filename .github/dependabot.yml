@@ -7,3 +7,7 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  - package-ecosystem: pip # the security scanners (pinned with hashes)
+    directory: /.github
+    schedule:
+      interval: weekly

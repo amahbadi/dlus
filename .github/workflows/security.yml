@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install scanners
-        run: pip install --quiet bandit semgrep
+        run: pip install --quiet --require-hashes -r .github/requirements-security.txt
       - name: Bandit (Python security linter, medium and high)
         run: bandit -q -ll dlus.py macos/*.py tests/*.py 2>&1 | tee bandit.txt
       - name: Semgrep (Python, command injection, secrets, GitHub Actions)

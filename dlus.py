@@ -381,6 +381,18 @@ def quarantine(path):
         pass
 
 
+class OneLineFormatter(logging.Formatter):
+    """every log entry stays one line, whatever a message contains (tracebacks keep their own lines)"""
+
+    def formatMessage(self, record):
+        return super().formatMessage(record).replace("\r", "\\r").replace("\n", "\\n")
+
+
+def logsafe(v, n=300):
+    """a value from the network, safe for one log line (no forged lines)"""
+    return str(v)[:n].replace("\r", "\\r").replace("\n", "\\n")
+
+
 def hidden_inside(base, path):
     """True if path goes through a hidden file or folder below base (.ssh, .git, .dlus ...): never shown on the network"""
     rel = os.path.relpath(path, base)
@@ -5216,8 +5228,8 @@ def send_compat(h, m, d, fmt, t=0.0, a=0, ch=0, snd=None, seek_hdr=False, qualit
     err = []
     threading.Thread(target=lambda: err.append(p.stderr.read().decode("utf-8", "ignore")), daemon=True).start()
     sent, why = 0, "ffmpeg finished"
-    log.info("media %s %s %s t=%.1f q=%s range=%s ua=%s", h.client_address[0], fmt, d.r["num"], t, quality, h.headers.get("Range", "-"),
-             (h.headers.get("User-Agent") or "")[:60])
+    log.info("media %s %s %s t=%.1f q=%s range=%s ua=%s", h.client_address[0], fmt, d.r["num"], t, quality, logsafe(h.headers.get("Range", "-")),
+             logsafe(h.headers.get("User-Agent") or "", 60))
     try:
         while True:
             chunk = p.stdout.read(65536)
@@ -6154,11 +6166,11 @@ def make_lan_handler(m):
                     m.tv_now = {"num": int(q["num"]), "t": float(q.get("t") or 0), "dur": float(q.get("dur") or 0), "playing": q.get("p") == "1",
                                 "q": q.get("q", ""), "ip": self.client_address[0], "at": time.time()}
                 if q.get("ev"):
-                    log.info("player %s: %s", self.client_address[0], q["ev"][:1500])
+                    log.info("player %s: %s", self.client_address[0], logsafe(q["ev"], 1500))
                 subst = (q.get("ss", ""), q.get("sd", ""), q.get("fs", ""), q.get("vh", ""))
                 if q.get("num") and (subst != getattr(m, "tv_sub_seen", None)):
                     m.tv_sub_seen = subst
-                    log.info("player %s subtitle: %s sync %s s, fullscreen=%s, viewport/screen=%s", self.client_address[0], subst[0] or "off", subst[1], subst[2], subst[3])
+                    log.info("player %s subtitle: %s sync %s s, fullscreen=%s, viewport/screen=%s", self.client_address[0], logsafe(subst[0] or "off", 80), logsafe(subst[1], 20), logsafe(subst[2], 20), logsafe(subst[3], 40))
                 since = int(q.get("since") or 0)
                 fresh = [c for c in list(m.tv_cmds) if c["seq"] > since and time.time() - c["at"] < 10]
                 return self.out(200, {"seq": m.tv_seq, "cmds": fresh})
@@ -6359,14 +6371,14 @@ def make_lan_handler(m):
                         return send_compat(self, m, d, "tv", num("t", 0), int(num("a", 0)), int(num("ch", 0)), (q.get("snd") or [None])[0],
                                            quality=(q.get("q") or [None])[0], mkv=(q.get("c") or [""])[0] == "mkv")
                     if mm.group(2):
-                        log.debug("TV request %s %s | %s", self.command, self.path, " | ".join("%s: %s" % kv for kv in self.headers.items()))
+                        log.debug("TV request %s %s | %s", self.command, logsafe(self.path), logsafe(" | ".join("%s: %s" % kv for kv in self.headers.items()), 2000))
                         ts = re.match(r"npt=([\d.:]+)-", self.headers.get("TimeSeekRange.dlna.org", ""))
                         t0 = num("t", 0)
                         if ts:  # TV seek bar: npt=SS.sss- or npt=HH:MM:SS.sss-
                             v = ts.group(1).split(":")
                             t0 = sum(float(x) * 60 ** i for i, x in enumerate(reversed(v)))
                         return send_compat(self, m, d, "mkv" if mm.group(2) == "s" else "mkvsub", t0, seek_hdr=bool(ts), quality=(q.get("q") or [None])[0])
-                    log.info("media %s raw %s range=%s ua=%s", self.client_address[0], d.r["num"], self.headers.get("Range", "-"), (self.headers.get("User-Agent") or "")[:60])
+                    log.info("media %s raw %s range=%s ua=%s", self.client_address[0], d.r["num"], logsafe(self.headers.get("Range", "-")), logsafe(self.headers.get("User-Agent") or "", 60))
                     return send_stream(self, d, lan=True)
             if parts[0] == m.settings.get("lan_token") and len(parts) >= 2:
                 d = m.find(parts[1])
@@ -6375,7 +6387,7 @@ def make_lan_handler(m):
                 if d:
                     if len(parts) > 2 and parts[2] == "c":
                         return send_compat(self, m, d, "mkv")
-                    log.info("media %s raw %s range=%s ua=%s", self.client_address[0], d.r["num"], self.headers.get("Range", "-"), (self.headers.get("User-Agent") or "")[:60])
+                    log.info("media %s raw %s range=%s ua=%s", self.client_address[0], d.r["num"], logsafe(self.headers.get("Range", "-")), logsafe(self.headers.get("User-Agent") or "", 60))
                     return send_stream(self, d, lan=True)
             self.out(404, b"", "text/plain")
 
@@ -6551,6 +6563,8 @@ def make_handler(m, port):
             if qk and secrets.compare_digest(qk, key):  # opened by the app: remember it in a cookie, drop the key from the address
                 rest = urllib.parse.urlencode([(a, b) for a, b in urllib.parse.parse_qsl(query) if a != "k"])
                 self.send_response(302)
+                if not path.startswith("/") or path.startswith("//") or "\\" in path:
+                    path = "/"  # only addresses on this page: never another site
                 self.send_header("Location", path + ("?" + rest if rest else ""))
                 self.send_header("Set-Cookie", "dlus_k=%s; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict" % key)
                 self.send_header("Content-Length", "0")
@@ -6759,7 +6773,7 @@ def main():
     os.makedirs(STATE_DIR, exist_ok=True)
     os.chmod(STATE_DIR, 0o700)  # TV code, TV pairing keys, UI key: this user only
     h = logging.handlers.RotatingFileHandler(os.path.join(STATE_DIR, "dlus.log"), maxBytes=2 << 20, backupCount=3)
-    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(threadName)s %(message)s"))
+    h.setFormatter(OneLineFormatter("%(asctime)s %(levelname)s %(threadName)s %(message)s"))
     logging.basicConfig(level=logging.INFO, handlers=[h, logging.StreamHandler()])
     url = "http://127.0.0.1:%d/?k=%s" % (args.port, ui_key())
     lockf = open(os.path.join(STATE_DIR, "lock"), "w")
