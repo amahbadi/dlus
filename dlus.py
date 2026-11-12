@@ -61,7 +61,7 @@ import zlib
 from xml.sax.saxutils import escape as xesc
 
 PORT = 8642
-VERSION = "7.27"
+VERSION = "7.28"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))  # ~/Desktop/dlus, or dlus.app/Contents/Resources when installed
 ICON_DIR = os.path.join(APP_DIR, "icons")
 APP_HEAD = ('<link rel=manifest href="/manifest.webmanifest"><link rel=icon type=image/png sizes=192x192 href="/icon-192.png">'

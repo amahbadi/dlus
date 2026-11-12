@@ -5,7 +5,7 @@
 > [!NOTE]
 > Security fixes are marked 🔒. dlus has had no publicly known vulnerabilities so far; the fixes below were found by our own review and scanners.
 
-## Unreleased
+## 7.28 - 2026-11-13
 
 - 🐛 Find TVs without a network (Wi-Fi off, no multicast route) reports no TVs instead of failing with "No route to host"
 - 🐛 Auto sync: on short videos or sparse subtitles, a subtitle for another film could be reported as "fits" and shifted; it is now recognised as not matching
@@ -13,7 +13,7 @@
 - 🐛 Proxy: a local web server is no longer mistaken for a VPN app's proxy (only a real proxy answer counts)
 - 🐛 Proxy: a malformed CONNECT request is answered with 400 instead of crashing its connection handler
 - 🐛 Styled subtitles (LG player): a line could start up to a second early when its time rounded up (same fix as 7.27, for the styled format)
-- 🧪 Test suite for the download engine, the local API, the home-network server and media (ffmpeg): coverage 17 % → 80 %+ (incl. a fake LG TV, a fake DLNA TV, fake VPN-app proxies and the proxy end to end); coverage badge
+- 🧪 Test suite: downloads, local API, home-network server, media (ffmpeg), a fake LG TV, a fake DLNA TV, fake VPN-app proxies, the proxy end to end; coverage 17 % → 80 %, shown as a badge in the README
 - 🔔 A device asking for access is named by its network name (e.g. *iPad*, *PS5*) instead of "Unknown device" when dlus knows it
 - 🧪 Tests never send real macOS notifications
 
