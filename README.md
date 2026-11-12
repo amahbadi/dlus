@@ -14,7 +14,7 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
-<p align="center"><img src="docs/screenshots/player.png" width="900" alt="The dlus player on an LG TV"></p>
+<p align="center"><img src="docs/screenshots/downloads.png" width="900" alt="dlus on the Mac"></p>
 
 ---
 
@@ -55,7 +55,7 @@ So I wrote a small script that downloads in many parts and checks every piece. T
 
 | | |
 |---|---|
-| <img src="docs/screenshots/downloads.png" alt="Downloads"><br>**Downloads** - many connections, every piece checked | <img src="docs/screenshots/tv-remote.png" alt="TV and remote"><br>**TV & remote** - Magic Remote layout, apps, inputs, typing |
+| <img src="docs/screenshots/player.png" alt="The dlus player"><br>**The dlus player** - on the TV and the Mac | <img src="docs/screenshots/tv-remote.png" alt="TV and remote"><br>**TV & remote** - Magic Remote layout, apps, inputs, typing |
 | <img src="docs/screenshots/player-subtitles.png" alt="Subtitles"><br>**Subtitles** - styles, sync, auto sync, online search | <img src="docs/screenshots/player-info.png" alt="Player info"><br>**What is playing** - original picture, sound, subtitle |
 | <img src="docs/screenshots/tv-home.png" alt="TV home page"><br>**TV home page** - films and shared folders on the TV | <img src="docs/screenshots/tv-folder.png" alt="Shared folder on the TV"><br>**Shared folder** on the TV |
 | <img src="docs/screenshots/find-subtitles.png" alt="Find subtitles"><br>**Find subtitles** - every match scored, the exact release first | <img src="docs/screenshots/autosync.png" alt="Subtitle auto sync"><br>**Auto sync** - subtitle fitted to the film's speech |
