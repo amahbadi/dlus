@@ -4346,7 +4346,7 @@ class Manager:
 
     def set_settings(self, s):
         old = self.settings.get("limit_mb")
-        for k, what in (("lan_on", "Sharing on the home network"), ("dlna_on", "DLNA library"), ("files_on", "Shared folders"),
+        for k, what in (("lan_on", "Sharing on the home network"), ("dlna_on", "DLNA library"), ("files_on", "Download folder on the network"),
                         ("proxy_on", "Web proxy for other devices"), ("proxy_auth", "Proxy password")):
             if k in s and bool(s[k]) != bool(self.settings.get(k)):
                 self.audit("%s turned %s" % (what, "on" if s[k] else "off"), level="warn" if bool(s[k]) != (k == "proxy_auth") else "info")

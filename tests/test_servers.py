@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _testserver import FileServer  # noqa: E402
@@ -259,6 +260,92 @@ class Servers(unittest.TestCase):
                 r = c.getresponse()
                 self.assertEqual(r.status, 200, oid)
                 r.read()
+        finally:
+            self.m.ssdp = None
+
+    def test_more_network_routes(self):
+        tok, num = self.tok, self.d.r["num"]
+        os.makedirs(dlus.fonts_dir(), exist_ok=True)
+        with open(os.path.join(dlus.fonts_dir(), "TestFont.woff2"), "wb") as f:
+            f.write(b"wOF2" + b"0" * 100)
+        self.assertEqual(self.lget("/fonts/TestFont.woff2")[0], 200)
+        for p in ("/favicon.ico", "/icon-192.png", "/manifest.json"):
+            self.assertEqual(self.lget(p)[0], 200, p)
+        st, data, r = self.lget("/%s/fplay/0/Series/ep1.mkv" % tok)
+        self.assertEqual(st, 302)
+        self.assertEqual(self.lget("/%s/fplay/0/Series/none.mkv" % tok)[0], 404)
+        self.assertEqual(self.lget("/%s/vtest" % tok)[0], 200)
+        self.assertEqual(self.lget("/%s/netcheck?ok=1&ms=30" % tok)[0], 200)
+        self.assertEqual(self.lget("/%s/files/sdir/0/Series/" % tok)[0], 200)
+        self.assertEqual(self.lget("/%s/files/sdir/0/Series/ep1.mkv" % tok)[0], 200)
+        self.assertEqual(self.lget("/%s/files/sdir/0/Series/.hidden/key" % tok)[0], 404)
+        self.assertEqual(self.lget("/%s/files/dir/%s" % (tok, urllib.parse.quote(os.path.relpath(self.d.out, os.path.realpath(self.m.settings["base_dir"])))))[0], 200)
+        self.assertEqual(self.lget("/%s/files/dir/nothing.bin" % tok)[0], 404)
+        # player helpers called by the TV page
+        self.assertEqual(self.lget("/%s/%d-subset?style=%s" % (tok, num, urllib.parse.quote(json.dumps(self.m.settings["sub_style"]))))[0], 200)
+        self.assertEqual(self.lget("/%s/%d-subset?style=notjson" % (tok, num))[0], 400)
+        self.assertEqual(self.lget("/%s/%d-subset?snd=night" % (tok, num))[0], 200)
+        self.assertEqual(self.lget("/%s/%d-subset?sid=&delay=0.4" % (tok, num))[0], 200)
+        self.assertEqual(self.lget("/%s/99999-subset" % tok)[0], 404)
+        self.assertEqual(self.lget("/%s/%d-autosync?sid=nope" % (tok, num))[0], 200)
+        def offline(*a, **k):
+            raise OSError("offline (test)")
+        self.m.web = offline  # never the real internet in tests
+        self.assertEqual(self.lget("/%s/%d-subsearch" % (tok, num))[0], 400)
+        del self.m.web
+        self.assertEqual(self.lget("/%s/%d-nope.vtt" % (tok, num))[0], 404)
+        self.assertEqual(self.lget("/%s/99999-hls" % tok)[0], 404)
+        self.assertEqual(self.lget("/%s/99999-thumb" % tok)[0], 404)
+        # a page request for a stream link opens the player page instead
+        self.assertEqual(self.lget("/%s/%d.mkv" % (tok, num), {"Accept": "text/html"})[0], 302)
+        self.assertEqual(self.lget("/%s/%s/x" % (tok, self.d.r["id"][:6]), {"Accept": "text/html"})[0], 302)
+        self.assertEqual(self.lget("/%s/%s/x" % (tok, self.d.r["id"][:6]), {"Range": "bytes=0-9"})[0], 206)
+        # the TV itself asks: picture mode and LG player (no real TV here: answered with an error, never a crash)
+        self.m.settings["tvs"] = [{"id": "t1", "ip": "127.0.0.1", "name": "TV", "mac": "", "ctl": "http://127.0.0.1:9/ctl"}]
+
+        def no_tv(tvid, wait=20):
+            raise ValueError("the TV is off (test)")
+        self.m.tv_ensure = no_tv  # do not wait 20 s for a TV that does not exist
+        try:
+            self.assertEqual(self.lget("/%s/%d-picture" % (tok, num))[0], 200)
+            self.assertIn(self.lget("/%s/%d-native?t=5" % (tok, num))[0], (200, 500))
+        finally:
+            self.m.settings["tvs"] = []
+            del self.m.tv_ensure
+        self.m.set_settings({"files_on": False})
+        try:
+            self.assertEqual(self.lget("/%s/files/dir/" % tok)[0], 404)  # "share my downloads" is off
+            self.assertEqual(self.lget("/%s/files/sdir/0/Series/" % tok)[0], 200)  # folders you added stay shared
+        finally:
+            self.m.set_settings({"files_on": True})
+
+    def test_wrong_code_lockout(self):
+        ip = "127.0.0.1"
+        self.m.pin_fail[ip] = []
+        try:
+            for i in range(10):
+                self.lget("/pin?c=wrong%d" % i)
+            self.assertEqual(self.lget("/pin?c=" + self.tok)[0], 429)
+            self.assertEqual(self.lget("/%s/tv" % self.tok)[0], 429)
+            self.assertTrue(any("10 wrong codes" in x["event"] for x in self.m.audit_log))
+        finally:
+            self.m.pin_fail[ip] = []
+
+    def test_dlna_extras(self):
+        self.m.ssdp = True
+        try:
+            port = self.m.settings["lan_port"]
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+            c.request("POST", "/dlna/cms/ctl", b"<x/>", {"SOAPACTION": '"urn:schemas-upnp-org:service:ConnectionManager:1#GetProtocolInfo"'})
+            self.assertEqual(c.getresponse().status, 200)
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+            c.request("SUBSCRIBE", "/dlna/cds/evt", headers={"CALLBACK": "<http://127.0.0.1:9/>", "NT": "upnp:event"})
+            self.assertEqual(c.getresponse().status, 200)
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+            c.request("POST", "/dlna/other", b"")
+            self.assertEqual(c.getresponse().status, 500)
+            for f in ("cds.xml", "cms.xml"):
+                self.assertEqual(self.lget("/dlna/" + f)[0], 200)
         finally:
             self.m.ssdp = None
 
