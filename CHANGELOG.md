@@ -7,6 +7,8 @@
 
 ## Unreleased
 
+- 🐛 Subtitles on the TV: a line could start up to one second early when its time rounded up to a full second (milliseconds now carry into the seconds)
+- 🧪 Regression tests for every fix since the first public release ([tests/test_regressions.py](tests/test_regressions.py))
 - 🤖 Coding style enforced in CI: full PEP 8 for Python (ruff) and `swift format` for the Swift window; code cleaned up to pass both (no behaviour change)
 
 ## 7.26 - 2026-11-12

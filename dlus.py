@@ -5050,8 +5050,8 @@ def cut_srt(vtt_path, start, delay, scale=1.0):
         return int(h) * 3600 + int(mi) * 60 + int(se) + int(ms) / 1000
 
     def ts(x):
-        x = max(0, x)
-        return "%02d:%02d:%02d,%03d" % (x // 3600, x % 3600 // 60, x % 60, round(x % 1 * 1000) % 1000)
+        ms = round(max(0, x) * 1000)  # whole milliseconds first, so 0.9996 s becomes 00:00:01,000 (not 00:00:00,000)
+        return "%02d:%02d:%02d,%03d" % (ms // 3600000, ms // 60000 % 60, ms // 1000 % 60, ms % 1000)
     out, n = [], 0
     for blk in re.split(r"\n\s*\n", rd(vtt_path).replace("\r", "")):
         mm = re.search(r"(\d+):(\d\d):(\d\d)[.,](\d{3}) --> (\d+):(\d\d):(\d\d)[.,](\d{3})", blk)
