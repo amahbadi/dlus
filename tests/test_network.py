@@ -63,7 +63,8 @@ class Proxy(unittest.TestCase):
         m.set_settings({"proxy_on": True, "proxy_port": free_port(), "proxy_auth": True})
         cls.port = m.settings["proxy_port"]
         # the test server is on 127.0.0.1, which the proxy (rightly) refuses: allow it for these tests only
-        m.proxy.own_ips = lambda: {"0.0.0.0"}
+        # security scan: a fake address list for the test, not a bind
+        m.proxy.own_ips = lambda: {"0.0.0.0"}  # nosec B104
         m.proxy.local_dest = lambda a: False
         cls.auth = "Basic " + base64.b64encode(("%s:%s" % (m.settings["proxy_user"], m.settings["proxy_pass"])).encode()).decode()
 
