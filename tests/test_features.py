@@ -81,6 +81,25 @@ class Subtitles(unittest.TestCase):
         self.assertEqual(r["results"][0]["score"], 100)
         self.assertTrue(r["results"][0]["best"])
 
+    def test_search_with_site_bonus_and_failures(self):
+        d = local_file(self.m, "Video/The.Test.Film.2026.2160p.BluRay.x265-GRP_30nama.mkv", b"\x1aE\xdf\xa3" + os.urandom(100))
+        r = self.m.subs_action(d, "search", {"lang": "fa", "query": "The Test Film"})
+        self.assertTrue(r["results"])
+        real = self.m.web
+
+        def flaky(url, *a, **k):
+            if "farsi_persian" in url or "opensubtitles" in url:
+                raise OSError("site down")
+            return real(url, *a, **k)
+        self.m.web = flaky
+        self.assertEqual(self.m.subs_action(d, "search", {"lang": "fa"})["results"], [])
+
+        def down(*a, **k):
+            raise OSError("offline")
+        self.m.web = down
+        with self.assertRaises(ValueError):
+            self.m.subs_action(d, "search", {"lang": "en"})
+
     def test_get_from_both_sites(self):
         self.assertTrue(self.m.subs_action(self.d, "get", {"path": "/subtitles/the-test-film/farsi_persian/111", "id": "111"})["added"])
         self.assertTrue(self.m.subs_action(self.d, "get", {"path": "https://dl.opensubtitles.org/x/1", "id": "os9", "name": "a.srt"})["added"])
@@ -262,6 +281,29 @@ class Settings(unittest.TestCase):
                 m.set_settings(bad)
         self.assertEqual(dlus.in_window("00:00", "23:59"), True)
         m.conn_limit()
+
+
+class SettingsWhileRunning(unittest.TestCase):
+    def test_limits_proxy_and_port_changes_while_running(self):
+        import socket as so
+        m = manager()
+
+        def port():
+            x = so.socket()
+            x.bind(("127.0.0.1", 0))
+            p = x.getsockname()[1]
+            x.close()
+            return p
+        m.set_settings({"lan_port": port(), "lan_on": True, "proxy_on": True, "proxy_port": port()})
+        self.assertTrue(m.lan and m.proxy)
+        busy = type("D", (), {"alive": True, "kill": lambda self: setattr(self, "killed", True), "r": {"status": "downloading"}})()
+        m.dls["fake"] = busy
+        m.set_settings({"limit_mb": 3})
+        self.assertTrue(getattr(busy, "killed", False))  # running downloads reconnect with the new limit
+        del m.dls["fake"]
+        m.set_settings({"lan_port": port()})  # moves the home-network server to the new port
+        m.set_settings({"proxy_on": False, "lan_on": False})
+        self.assertIsNone(m.proxy)
 
 
 class SettingsErrors(unittest.TestCase):

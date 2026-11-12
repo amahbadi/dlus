@@ -129,6 +129,52 @@ class DiskAndDamage(unittest.TestCase):
                 self.assertEqual(d.r["status"], "done")  # an unexpected error is retried, not fatal
 
 
+class PlayerPriority(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.fs = FileServer(tempfile.mkdtemp())
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.fs.stop()
+
+    def test_jump_back_takes_priority_and_stream_waits(self):
+        body = os.urandom(8 * 1024 * 1024)
+        self.fs.put("prio.mkv", body)
+        self.fs.delay = 0.03
+        m = manager()
+        did = m.add(self.fs.url("prio.mkv"), conns=2)
+        d = run_until(m, did, statuses=("downloading",))
+        d.want(6 * dlus.C + 5)  # the player jumps far ahead...
+        end = time.time() + 20
+        while time.time() < end and 6 not in d.active_chunks:
+            m.tick()
+            time.sleep(0.1)
+        d.t_preempt = 0
+        d.want(3 * dlus.C + 5)  # ...then back: the part it needs now goes first, a later one gives way
+        end = time.time() + 20
+        while time.time() < end and not any("jumped" in e for e in d.events):
+            m.tick()
+            time.sleep(0.1)
+        self.assertTrue(any("jumped" in e for e in d.events), list(d.events)[-6:])
+        # a player asks for a part that is not there yet: the stream waits until it arrives
+        m.port = free_port()
+        srv = dlus.http.server.ThreadingHTTPServer(("127.0.0.1", m.port), dlus.make_handler(m, m.port))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            self.fs.delay = 0.0
+            c = http.client.HTTPConnection("127.0.0.1", m.port, timeout=60)
+            c.request("GET", "/stream/%s/x?ik=%s" % (did, m.media_key), headers={"Host": "127.0.0.1:%d" % m.port, "Range": "bytes=%d-%d" % (
+                7 * dlus.C + 10, 7 * dlus.C + 19)})
+            r = c.getresponse()
+            self.assertEqual(r.status, 206)
+            got = r.read()
+            self.assertEqual(got, body[7 * dlus.C + 10:7 * dlus.C + 20])
+        finally:
+            srv.shutdown()
+        run_until(m, did)
+
+
 class UnknownDeviceAtTheDoor(unittest.TestCase):
     def test_waiting_page_from_the_home_network(self):
         m = manager()

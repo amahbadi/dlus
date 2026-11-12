@@ -468,7 +468,10 @@ class Discovery(unittest.TestCase):
 
             def close(self):
                 pass
+        answers.extend([(b"HTTP/1.1 200 OK\r\nLOCATION: http://127.0.0.1:9/gone.xml\r\n\r\n", ("127.0.0.1", 1900)),  # nothing there
+                        (b"no location header", ("127.0.0.1", 1900))])
         m = manager()
+        m.net.slow()  # a real home-network address: the search binds to it
         try:
             real = socket.socket
 

@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.environ.setdefault("DLM_HOME", tempfile.mkdtemp(prefix="dlus-test-"))
@@ -98,6 +99,17 @@ class Media(unittest.TestCase):
         st, data = self.get("/%s/%d-thumb?t=3" % (self.tok, self.d.r["num"]))
         self.assertEqual(st, 200)
         self.assertEqual(data[:2], b"\xff\xd8")  # JPEG
+
+    def test_thumbnail_cache_errors_and_landing(self):
+        p1 = self.m.thumb(self.d, 4)
+        self.assertEqual(self.m.thumb(self.d, 4), p1)  # cached
+        with mock.patch.object(dlus.shutil, "which", lambda x: None):
+            with self.assertRaises(ValueError):
+                self.m.thumb(self.d, 41)  # a time with no cached preview yet
+        src = "http://127.0.0.1:%d/stream/%s/x?ik=%s" % (self.port, self.d.r["id"], self.m.media_key)
+        land = dlus.HLS.landing(src, 5.0)
+        self.assertTrue(0 <= land <= 5.01, land)  # where a copied stream really starts (keyframe at or before 5 s)
+        self.assertEqual(dlus.HLS.landing(src, 0), 0.0)
 
     def test_converted_streams_start(self):
         num = self.d.r["num"]
