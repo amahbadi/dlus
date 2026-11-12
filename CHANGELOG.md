@@ -5,6 +5,10 @@
 > [!NOTE]
 > Security fixes are marked 🔒. dlus has had no publicly known vulnerabilities so far; the fixes below were found by our own review and scanners.
 
+## Unreleased
+
+- 👥 Second maintainer: @Mohammadi8mf (Mohammad Mohammadi Fath) - code owner, reviewer and successor ([GOVERNANCE.md](GOVERNANCE.md))
+
 ## 7.30 - 2026-11-13
 
 - 📝 Written [security review](docs/SECURITY-REVIEW.md): scope, method, every finding and fix, accepted risks
