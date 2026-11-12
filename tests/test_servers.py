@@ -52,6 +52,7 @@ def wait(cond, timeout=30):
 class Servers(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        os.environ["DLUS_GW_HELPER"] = FAKE_GW  # each test file has its own fake helper
         home = tempfile.mkdtemp(prefix="dlus-m-")
         dlus.STATE_DIR = home
         cls.home = home

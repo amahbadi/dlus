@@ -137,6 +137,7 @@ class Proxy(unittest.TestCase):
 
 class Router(unittest.TestCase):
     def setUp(self):
+        os.environ["DLUS_GW_HELPER"] = FAKE_GW  # other test files use their own fake helper: always this one here
         self.m = manager()
         self.m.net.slow()
 
