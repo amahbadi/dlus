@@ -279,7 +279,8 @@ class Servers(unittest.TestCase):
         self.assertEqual(self.lget("/%s/files/sdir/0/Series/" % tok)[0], 200)
         self.assertEqual(self.lget("/%s/files/sdir/0/Series/ep1.mkv" % tok)[0], 200)
         self.assertEqual(self.lget("/%s/files/sdir/0/Series/.hidden/key" % tok)[0], 404)
-        self.assertEqual(self.lget("/%s/files/dir/%s" % (tok, urllib.parse.quote(os.path.relpath(self.d.out, os.path.realpath(self.m.settings["base_dir"])))))[0], 200)
+        rel = urllib.parse.quote(os.path.relpath(self.d.out, os.path.realpath(self.m.settings["base_dir"])))
+        self.assertEqual(self.lget("/%s/files/dir/%s" % (tok, rel))[0], 200)
         self.assertEqual(self.lget("/%s/files/dir/nothing.bin" % tok)[0], 404)
         # player helpers called by the TV page
         self.assertEqual(self.lget("/%s/%d-subset?style=%s" % (tok, num, urllib.parse.quote(json.dumps(self.m.settings["sub_style"]))))[0], 200)
