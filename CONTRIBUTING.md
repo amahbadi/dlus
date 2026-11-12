@@ -26,6 +26,7 @@ fork → branch → pull request → 🤖 checks comment on it → fix until ✅
    - Python 3.9+, **standard library only** (no new dependencies), [PEP 8](https://peps.python.org/pep-0008/) style as in the code around you, lines up to 160 characters
    - external programs only with argument lists (never `shell=True`), files only inside the folders dlus owns, input from the network always checked
    - shell scripts must pass `shellcheck -S warning`
+   - Swift (the window, `macos/main.swift`) follows the [Swift API Design Guidelines](https://www.swift.org/documentation/api-design-guidelines/)
 3. **Run the checks** before you push - CI runs the same:
    ```sh
    python3 -m py_compile dlus.py
