@@ -151,6 +151,27 @@ class TV(unittest.TestCase):
         finally:
             self.tv.refuse = set()
 
+    def test_4d_power_media_keys_pointer_fallback_and_forget(self):
+        self.act("pair")
+        self.act("button", {"name": "POWER"})
+        self.assertIn("ssap://system/turnOff", self.tv.requests)
+        self.m.tv_now = None
+        self.act("button", {"name": "PLAY"})
+        self.assertIn("ssap://media.controls/play", self.tv.requests)
+        self.tv.refuse = {"getPointerInputSocket"}  # LG keeps the pointer keys for its own remote
+        try:
+            for c in self.m.tv_conns.values():
+                c.btn = None
+            r = self.act("button", {"name": "HOME"})
+            self.assertEqual(r.get("via"), "app")
+            with self.assertRaises(ValueError):
+                self.act("button", {"name": "UP"})
+        finally:
+            self.tv.refuse = set()
+        self.act("pair")
+        self.m.tv_action("faketv", "forget", {})  # with an open connection
+        self.assertNotIn("faketv", self.m.tv_conns)
+
     def test_4_open_dlus_on_the_tv(self):
         self.act("pair")
         self.act("open", {})

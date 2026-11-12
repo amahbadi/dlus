@@ -89,7 +89,8 @@ class DiskAndDamage(unittest.TestCase):
         m.action(did, "resume", {})
         d = run_until(m, did)
         self.assertEqual(open(d.out, "rb").read(), body)
-        self.assertTrue(any("CHANGED ON DISK" in e or "RESUME CHECK FAILED" in e for e in d.events), list(d.events)[-8:])
+        # caught by whichever check fits the moment of the pause: checked piece / half-downloaded piece / unchecked whole piece
+        self.assertTrue(any(x in e for e in d.events for x in ("CHANGED ON DISK", "RESUME CHECK FAILED", "CHECK FAILED")), list(d.events)[-8:])
 
     def test_piece_too_big_on_disk(self):
         m, did, body = self.paused_half("too-big.mkv")
@@ -199,6 +200,82 @@ class ApiErrors(unittest.TestCase):
             self.assertTrue(m.dls[d.r["id"]].r.get("force") or m.dls[d.r["id"]].r["status"] in ("done", "queued", "downloading"))
         finally:
             srv.shutdown()
+
+
+class RouterStats(unittest.TestCase):
+    def test_traffic_per_device_and_settings(self):
+        m = manager()
+        g = m.gw
+        g.USAGE = os.path.join(dlus.STATE_DIR, "traffic.json")
+        g.devices = {"aa:aa:aa:aa:aa:01": {"ip": "192.168.1.50", "mac": "aa:aa:aa:aa:aa:01", "name": "TV"}}
+        g.load_usage()
+        m.settings.update(gw_policy={"aa:aa:aa:aa:aa:01": "tunnel"})
+        g.count_usage("192.168.1.50", 5000)
+        g.count_usage("192.168.1.50", 0)
+        g.count_usage("10.9.9.9", 100)  # not a known device: ignored
+        g.save_usage(force=True)
+        self.assertTrue(os.path.exists(g.USAGE))
+        self.assertEqual(g.usage_view("aa:aa:aa:aa:aa:01")["total"], 5000) if hasattr(g, "usage_view") else None
+        m.gw_set({"policy": {"aa:aa:aa:aa:aa:01": "default"}, "names": {"aa:aa:aa:aa:aa:01": "Living room TV", "bad": "x"},
+                  "dismiss": "aa:aa:aa:aa:aa:01", "reset_usage": "aa:aa:aa:aa:aa:01"})
+        self.assertNotIn("aa:aa:aa:aa:aa:01", m.settings["gw_policy"])
+        self.assertEqual(m.settings["gw_names"]["aa:aa:aa:aa:aa:01"], "Living room TV")
+
+
+class Launchers(unittest.TestCase):
+    def test_finder_and_players_without_opening_anything(self):
+        m = manager()
+        p = os.path.join(m.settings["base_dir"], "Video", "o.mkv")
+        os.makedirs(os.path.dirname(p))
+        with open(p, "wb") as f:
+            f.write(b"\x1aE\xdf\xa3" + b"0" * 100)
+        d = m.import_local(p)
+        opened = []
+        with mock.patch.object(dlus.subprocess, "Popen", lambda cmd, **k: opened.append(cmd)), \
+                mock.patch.object(m, "players", lambda: ["IINA"]):
+            m.action(d.r["id"], "open", {})
+            m.action(d.r["id"], "play", {"app": "IINA"})
+            m.action(d.r["id"], "play", {"app": "mpv"})
+        self.assertEqual(opened[0][:2], ["open", "-R"])
+        self.assertEqual(opened[1][:3], ["open", "-a", "IINA"])
+        self.assertEqual(opened[2][0], "mpv")
+        m.action(d.r["id"], "up", {})
+        m.action(d.r["id"], "start", {})
+
+
+class VerifyMore(unittest.TestCase):
+    def test_checksum_file_link_and_double_start(self):
+        import hashlib
+        fs = FileServer(tempfile.mkdtemp())
+        try:
+            m = manager()
+            data = os.urandom(40000)
+            p = os.path.join(m.settings["base_dir"], "Disk images", "x.iso")
+            os.makedirs(os.path.dirname(p))
+            with open(p, "wb") as f:
+                f.write(data)
+            d = m.import_local(p)
+            d.r["status"] = "done"
+            fs.put("x.iso.sha256", (hashlib.sha256(data).hexdigest() + "  x.iso\n").encode())
+            fs.put("other.sha256", (hashlib.sha256(b"x").hexdigest() + "  other.iso\n").encode())
+            with self.assertRaises(ValueError):
+                m.verify(d, fs.url("other.sha256"))  # no line for this file
+            d.verifying = True
+            with self.assertRaises(ValueError):
+                m.verify(d, "")
+            d.verifying = False
+            m.verify(d, fs.url("x.iso.sha256"))
+            for _ in range(50):
+                if (d.r.get("verify") or {}).get("state") == "ok":
+                    break
+                time.sleep(0.1)
+            self.assertEqual(d.r["verify"]["state"], "ok")
+            self.assertTrue(d.r["checksum_src"].endswith("x.iso.sha256"))
+            self.assertEqual(m.web(fs.url("x.iso.sha256"))[:10], hashlib.sha256(data).hexdigest()[:10].encode())
+            with self.assertRaises(ValueError):
+                m.web("file:///etc/hosts")
+        finally:
+            fs.stop()
 
 
 @unittest.skipUnless(FFMPEG, "ffmpeg is not installed")

@@ -73,5 +73,26 @@ class Main(unittest.TestCase):
             fs.stop()
 
 
+class MainErrors(unittest.TestCase):
+    def test_busy_port_and_missing_curl(self):
+        dlus.STATE_DIR = tempfile.mkdtemp(prefix="dlus-main-")
+        busy = socket.socket()
+        busy.bind(("127.0.0.1", 0))
+        busy.listen(1)
+        try:
+            with mock.patch.object(sys, "argv", ["dlus", "--port", str(busy.getsockname()[1]), "--no-open"]), \
+                    mock.patch.object(dlus.Net, "pubip", lambda self: None):
+                with self.assertRaises(SystemExit) as e:
+                    dlus.main()
+            self.assertIn("busy", str(e.exception))
+        finally:
+            busy.close()
+        dlus.STATE_DIR = tempfile.mkdtemp(prefix="dlus-main-")
+        with mock.patch.object(sys, "argv", ["dlus", "--no-open"]), mock.patch.object(dlus.shutil, "which", lambda x: None):
+            with self.assertRaises(SystemExit) as e:
+                dlus.main()
+        self.assertIn("curl", str(e.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
