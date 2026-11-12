@@ -15,3 +15,4 @@ updates:
       - dependency-name: bandit
       - dependency-name: atheris
       - dependency-name: ruff
+      - dependency-name: coverage

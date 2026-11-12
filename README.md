@@ -8,6 +8,7 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
 <p align="center">
   <a href="https://github.com/amahbadi/dlus/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/amahbadi/dlus?label=release&color=6d5efc"></a>
   <a href="https://github.com/amahbadi/dlus/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/amahbadi/dlus/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/amahbadi/dlus/actions/workflows/ci.yml"><img alt="Test coverage" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Famahbadi%2Fdlus%2Fbadges%2Fcoverage.json"></a>
   <a href="https://github.com/amahbadi/dlus/actions/workflows/security.yml"><img alt="Security scan" src="https://github.com/amahbadi/dlus/actions/workflows/security.yml/badge.svg"></a>
   <a href="https://github.com/amahbadi/dlus/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/amahbadi/dlus/actions/workflows/codeql.yml/badge.svg"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/amahbadi/dlus"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/amahbadi/dlus/badge"></a>
