@@ -3,7 +3,28 @@
 // dlus.app - native window for dlus. The work (downloads, TV, sharing) runs in a background
 // service (launchd agent com.dlus, installed by setup.sh); this app shows its UI in a WebKit view.
 import AppKit
+import UserNotifications
 import WebKit
+
+// `dlus --notify <title> <message>`: the background service shows its notifications through the app, so macOS
+// shows the dlus icon (and a click opens dlus). No window, no Dock icon; exits when the notification is handed over.
+if CommandLine.arguments.count >= 4 && CommandLine.arguments[1] == "--notify" {
+    let center = UNUserNotificationCenter.current()
+    let done = DispatchSemaphore(value: 0)
+    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+        guard granted else {
+            done.signal()
+            return
+        }
+        let content = UNMutableNotificationContent()
+        content.title = CommandLine.arguments[2]
+        content.body = CommandLine.arguments[3]
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        center.add(request) { _ in done.signal() }
+    }
+    _ = done.wait(timeout: .now() + 120)  // the very first time macOS asks the user to allow notifications
+    exit(0)
+}
 
 let uiURL = URL(string: "http://127.0.0.1:8642/")!
 let keyFile = (NSHomeDirectory() as NSString).appendingPathComponent(".dlus/ui-key")

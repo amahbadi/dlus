@@ -61,7 +61,7 @@ import zlib
 from xml.sax.saxutils import escape as xesc
 
 PORT = 8642
-VERSION = "7.26"
+VERSION = "7.27"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))  # ~/Desktop/dlus, or dlus.app/Contents/Resources when installed
 ICON_DIR = os.path.join(APP_DIR, "icons")
 APP_HEAD = ('<link rel=manifest href="/manifest.webmanifest"><link rel=icon type=image/png sizes=192x192 href="/icon-192.png">'
@@ -2965,9 +2965,15 @@ class Manager:
         self.sched_wait = False
 
     def notify(self, msg):
-        if self.settings.get("notify", True) and sys.platform == "darwin":
-            subprocess.Popen(["osascript", "-e", "display notification %s with title \"dlus\"" % json.dumps(msg, ensure_ascii=False)],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if not (self.settings.get("notify", True) and sys.platform == "darwin"):
+            return
+        app = os.path.join(os.path.dirname(APP_DIR), "MacOS", "dlus")  # dlus.app/Contents/MacOS/dlus when installed
+        if APP_DIR.endswith(".app/Contents/Resources") and os.access(app, os.X_OK):
+            # through the app itself: macOS shows the dlus icon, and a click opens dlus
+            subprocess.Popen([app, "--notify", "dlus", str(msg)[:500]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        subprocess.Popen(["osascript", "-e", "display notification %s with title \"dlus\"" % json.dumps(msg, ensure_ascii=False)],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # ------------------------------------------------------ who may use dlus from the network + the audit log
     def audit(self, event, ip="", device="", level="info"):

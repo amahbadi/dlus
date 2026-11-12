@@ -5,8 +5,9 @@
 > [!NOTE]
 > Security fixes are marked 🔒. dlus has had no publicly known vulnerabilities so far; the fixes below were found by our own review and scanners.
 
-## Unreleased
+## 7.27 - 2026-11-12
 
+- 🔔 Notifications show the dlus logo and open dlus when clicked (sent through the app; macOS asks once to allow them)
 - 🐛 Subtitles on the TV: a line could start up to one second early when its time rounded up to a full second (milliseconds now carry into the seconds)
 - 🧪 Regression tests for every fix since the first public release ([tests/test_regressions.py](tests/test_regressions.py))
 - 🤖 Coding style enforced in CI: full PEP 8 for Python (ruff) and `swift format` for the Swift window; code cleaned up to pass both (no behaviour change)
