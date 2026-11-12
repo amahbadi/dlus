@@ -7,6 +7,7 @@
 
 ## Unreleased
 
+- 🐧 Linux plan: design ([docs/LINUX.md](docs/LINUX.md)) and tasks for a `.deb` for Ubuntu / Debian, open for contributors ([#21](https://github.com/amahbadi/dlus/issues/21))
 - 👥 Second maintainer: @Mohammadi8mf (Mohammad Mohammadi Fath) - code owner, reviewer and successor ([GOVERNANCE.md](GOVERNANCE.md))
 
 ## 7.30 - 2026-11-13
