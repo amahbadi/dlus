@@ -3035,6 +3035,9 @@ class Manager:
             return False
         name, kind = device_name(ua, ip)
         host = (self.sessions.host_info(ip) or {}).get("host", "")
+        seen = next((dv.get("name") for dv in (getattr(self.gw, "devices", None) or {}).values() if dv.get("ip") == ip), "")
+        if name.startswith("Unknown device") and (seen or host):
+            name = seen or host  # its name on the network (Bonjour / router), e.g. "PS5" or "iPad"
         if ip not in self.lan_pending:
             self.lan_pending[ip] = {"ip": ip, "name": name if name != ip else host or ip, "kind": kind, "host": host, "mac": self.mac_of(ip),
                                     "ua": ua[:180], "what": what, "at": time.time()}

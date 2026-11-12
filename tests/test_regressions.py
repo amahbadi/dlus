@@ -31,6 +31,7 @@ def manager():
     dlus.STATE_DIR = home
     m = dlus.Manager(0)
     m.settings["base_dir"] = os.path.join(home, "dl")
+    m.notify = lambda msg: None  # tests never show real macOS notifications
     return m
 
 

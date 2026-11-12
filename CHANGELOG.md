@@ -5,6 +5,11 @@
 > [!NOTE]
 > Security fixes are marked 🔒. dlus has had no publicly known vulnerabilities so far; the fixes below were found by our own review and scanners.
 
+## Unreleased
+
+- 🔔 A device asking for access is named by its network name (e.g. *iPad*, *PS5*) instead of "Unknown device" when dlus knows it
+- 🧪 Tests never send real macOS notifications
+
 ## 7.27 - 2026-11-12
 
 - 🔔 Notifications show the dlus logo and open dlus when clicked (sent through the app; macOS asks once to allow them)
