@@ -71,7 +71,7 @@ jobs:
           import json
           pct = json.load(open("coverage.json"))["totals"]["percent_covered"]
           color = "brightgreen" if pct >= 90 else "green" if pct >= 80 else "yellowgreen" if pct >= 70 else "yellow" if pct >= 60 else "orange"
-          json.dump({"schemaVersion": 1, "label": "coverage", "message": "%d%%" % pct, "color": color}, open("badge.json", "w"))
+          json.dump({"schemaVersion": 1, "label": "coverage", "message": "%.1f%%" % (int(pct * 10) / 10), "color": color}, open("badge.json", "w"))
           print("coverage %.1f%%" % pct)
           PY
       - name: Publish to the badges branch

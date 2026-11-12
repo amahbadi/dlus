@@ -90,6 +90,37 @@ class Subtitles(unittest.TestCase):
         self.m.subs_action(self.d, "get", {"path": "/subtitles/the-test-film/farsi_persian/111", "id": "111"})
         self.assertEqual(len(self.m.subs_info(self.d)["tracks"]), len(info["tracks"]))
 
+    def test_add_from_a_link_and_settings(self):
+        import http.server
+        import threading
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                body = srt([1, 2, 3]).encode()
+                self.send_response(200)
+                self.send_header("Content-Disposition", 'attachment; filename="Film.fa.srt"')
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            r = self.m.subs_action(self.d, "add", {"url": "http://127.0.0.1:%d/sub" % srv.server_address[1]})
+            self.assertTrue(r["added"])
+            with self.assertRaises(ValueError):
+                self.m.subs_action(self.d, "add", {"url": "file:///etc/passwd"})
+            self.m.subs_action(self.d, "set", {"scale": 1.04})
+            self.assertAlmostEqual(self.d.r["sub_scale"], 1.04)
+            self.m.subs_action(self.d, "set", {"scale": 3})
+            self.assertEqual(self.d.r["sub_scale"], 1.0)
+            with self.assertRaises(KeyError):
+                self.m.subs_action(self.d, "dance", {})
+        finally:
+            srv.shutdown()
+
     def test_subtitle_formats(self):
         for name, raw in (("a.vtt", b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhi\n"), ("b.srt", b"\xef\xbb\xbf" + srt([1, 2]).encode()),
                           ("c.srt", "﻿".encode("utf-16-le") + srt([3]).encode("utf-16-le"))):

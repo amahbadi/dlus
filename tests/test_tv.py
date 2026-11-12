@@ -140,6 +140,22 @@ class TV(unittest.TestCase):
     def test_4_open_dlus_on_the_tv(self):
         self.act("pair")
         self.act("open", {})
+        film = os.path.join(self.m.settings["base_dir"], "Video", "tvfilm.mkv")
+        os.makedirs(os.path.dirname(film), exist_ok=True)
+        with open(film, "wb") as f:
+            f.write(b"\x1aE\xdf\xa3" + os.urandom(2000))
+        d = self.m.import_local(film)
+        self.act("open", {"id": d.r["id"], "at": 42})
+        with self.assertRaises(ValueError):
+            self.act("open", {"id": "nope"})
+        with self.assertRaises(ValueError):
+            self.act("open", {"folder": 7, "rel": "x"})
+        with self.assertRaises(ValueError):
+            self.act("launch", {"app": "../../etc"})
+        self.act("off", {})
+        self.assertIn("ssap://system/turnOff", self.tv.requests)
+        with self.assertRaises(KeyError):
+            self.act("make-coffee", {})
         self.assertIn("ssap://system.launcher/open", self.tv.requests)
 
     def test_5_changed_certificate_is_refused(self):

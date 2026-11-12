@@ -392,6 +392,7 @@ class Casting(unittest.TestCase):
             m.need_lan = lambda: None
             m.tv_up = lambda ip, wait=1.0: True
             m.cast(d, fake[0]["id"], "orig")
+            m.cast(d, fake[0]["id"], "orig", at=12.0)  # continue on the TV where the Mac stopped
             for act in ("pause", "play", "stop"):
                 m.cast_ctl(act)
             self.assertIn("SetAVTransportURI", tv.actions)
