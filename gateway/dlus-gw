@@ -1,0 +1,176 @@
+#!/bin/bash
+# dlus-gw - root helper for the dlus "VPN router" mode.
+# Fixed command set, strictly validated arguments, all pf rules in their own anchor
+# (com.apple/dlus) so /etc/pf.conf is never edited.
+#
+#   dlus-gw enable <lan_if> <lan_cidr> <lan_gw> <tun_if|-> <killswitch 0|1>
+#   dlus-gw set tunnel|direct [ip ...]      replace the device list (instant switch)
+#   dlus-gw kill <ip ...>                   drop open connections (after a switch)
+#   dlus-gw status                          forwarding, pf, per-device counters
+#   dlus-gw disable                         remove rules, restore settings
+#   dlus-gw selftest                        syntax-check the rules, change nothing
+#   dlus-gw full on <tun_if> | full off     send ALL of this Mac's traffic into a tunnel (for split-tunnel VPNs)
+#   dlus-gw version
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+ANCHOR="com.apple/dlus"
+VERSION=2
+STATE=/var/run/dlus-gw.state
+FULL=/var/run/dlus-gw.full
+RULES=/var/run/dlus-gw.rules
+IP_RE='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+CIDR_RE='^([0-9]{1,3}\.){3}[0-9]{1,3}/([89]|[12][0-9]|3[0-2])$'
+IF_RE='^(en|utun|ipsec|ppp|bridge|tun|wg)[0-9]{1,3}$'
+
+die() { echo "error: $*" >&2; exit 2; }
+isip() {
+	[[ $1 =~ $IP_RE ]] || return 1
+	local IFS=. o
+	for o in $1; do ((10#$o <= 255)) || return 1; done
+}
+[ "$(id -u)" = 0 ] || die "must run as root (sudo)"
+
+rules() { # lan cidr gw tun peer ks -> pf ruleset (translation first, then filtering)
+	# No "route-to" into the tunnel: on macOS 26 pf route-to into a utun interface panics the kernel
+	# (2026-11-12, dlil_input_en0 bounds trap). Forwarded packets follow the Mac's own routing table
+	# instead - with the VPN in TUN mode that already points into the tunnel - and get NAT there.
+	local lan=$1 cidr=$2 gw=$3 tun=$4 peer=$5 ks=$6
+	echo "table <dlus_tunnel> persist"
+	echo "table <dlus_direct> persist"
+	echo "table <dlus_lan> const { $cidr }"
+	if [[ $tun != - ]]; then
+		# tunnelled devices: DNS goes through the tunnel as well (no leaks, no filtered ISP DNS)
+		echo "rdr on $lan inet proto { udp tcp } from <dlus_tunnel> to <dlus_lan> port 53 -> 1.1.1.1 port 53"
+		echo "nat on $tun inet from { <dlus_tunnel> <dlus_direct> } to any -> ($tun)"
+	fi
+	if [[ $ks == 0 ]]; then
+		echo "nat on $lan inet from { <dlus_tunnel> <dlus_direct> } to ! <dlus_lan> -> ($lan)"
+	else
+		echo "nat on $lan inet from <dlus_direct> to ! <dlus_lan> -> ($lan)"
+		# kill switch: a tunnelled device's packet that would leave on the LAN (VPN dropped) is dropped
+		echo "block drop out quick on $lan inet from <dlus_tunnel> to ! <dlus_lan>"
+		[[ $tun == - ]] && echo "block drop in quick on $lan inet from <dlus_tunnel> to ! <dlus_lan>"
+	fi
+	echo "pass in quick on $lan inet from { <dlus_tunnel> <dlus_direct> } to ! <dlus_lan> keep state"
+}
+
+full_off() {
+	if [ -f "$FULL" ]; then
+		t=$(cat "$FULL")
+		route -q -n delete -net 0.0.0.0/1 -interface "$t" >/dev/null 2>&1
+		route -q -n delete -net 128.0.0.0/1 -interface "$t" >/dev/null 2>&1
+		rm -f "$FULL"
+	fi
+}
+
+case "${1:-}" in
+enable)
+	[ $# -eq 6 ] || die "usage: enable <lan_if> <lan_cidr> <lan_gw> <tun_if|-> <killswitch>"
+	lan=$2 cidr=$3 gw=$4 tun=$5 ks=$6
+	[[ $lan =~ $IF_RE ]] || die "bad LAN interface"
+	[[ $cidr =~ $CIDR_RE ]] && isip "${cidr%/*}" || die "bad LAN network"
+	isip "$gw" || die "bad LAN gateway"
+	[[ $tun == - || $tun =~ $IF_RE ]] || die "bad tunnel interface"
+	[[ $ks == 0 || $ks == 1 ]] || die "bad kill switch value"
+	peer=-
+	if [[ $tun != - ]]; then
+		peer=$(ifconfig "$tun" 2>/dev/null | awk '/inet /{ if ($3 == "-->") print $4; else print $2; exit }')
+		isip "$peer" || die "tunnel $tun has no IPv4 address"
+		via=$(route -n get 1.1.1.1 2>/dev/null | awk '/interface:/{print $2}')
+		[[ $via == "$tun" ]] || die "the VPN ($tun) does not carry this Mac's internet traffic (route goes via ${via:-?}) - turn on TUN / system-wide mode"
+	fi
+	[ -f "$STATE" ] || echo "fwd=$(sysctl -n net.inet.ip.forwarding) redir=$(sysctl -n net.inet.ip.redirect) token=" > "$STATE"
+	rules "$lan" "$cidr" "$gw" "$tun" "$peer" "$ks" > "$RULES.new" || die "rule generation failed"
+	pfctl -q -n -a "$ANCHOR" -f "$RULES.new" || die "pf rejected the rules"
+	mv "$RULES.new" "$RULES"
+	sysctl -w net.inet.ip.forwarding=1 >/dev/null
+	sysctl -w net.inet.ip.redirect=0 >/dev/null # don't tell devices to bypass the Mac
+	pfctl -q -a "$ANCHOR" -f "$RULES" || die "loading rules failed"
+	if ! grep -q 'token=[0-9]' "$STATE"; then
+		tok=$(pfctl -E 2>&1 | awk '/Token/{print $NF}')
+		sed -i '' "s/token=[0-9]*/token=$tok/" "$STATE"
+	fi
+	echo "ok lan=$lan tun=$tun peer=$peer killswitch=$ks"
+	;;
+set)
+	t=${2:-}
+	[[ $t == tunnel || $t == direct ]] || die "usage: set tunnel|direct [ip ...]"
+	shift 2
+	for ip in "$@"; do isip "$ip" || die "bad IP $ip"; done
+	if [ $# -gt 0 ]; then
+		pfctl -q -a "$ANCHOR" -t "dlus_$t" -T replace "$@" 2>/dev/null || die "table update failed"
+	else
+		pfctl -q -a "$ANCHOR" -t "dlus_$t" -T flush 2>/dev/null
+	fi
+	echo "ok $t $#"
+	;;
+kill)
+	shift
+	for ip in "$@"; do
+		isip "$ip" || die "bad IP $ip"
+		pfctl -q -k "$ip" 2>/dev/null
+	done
+	echo "ok"
+	;;
+status)
+	echo "dlus-gw $VERSION forwarding=$(sysctl -n net.inet.ip.forwarding) redirect=$(sysctl -n net.inet.ip.redirect) full=$(cat "$FULL" 2>/dev/null || echo -)"
+	pfctl -s info 2>/dev/null | head -1
+	[ -f "$RULES" ] && echo "rules=loaded" || echo "rules=none"
+	for t in tunnel direct; do
+		echo "== $t $(pfctl -a "$ANCHOR" -t "dlus_$t" -T show 2>/dev/null | tr -d ' ' | tr '\n' ' ')"
+	done
+	echo "== states"
+	pfctl -s states -v 2>/dev/null | awk '/->|<-/{hdr=$0; next} /bytes/{print hdr " | " $0}'  # connection + its byte counters
+	;;
+version)
+	echo "dlus-gw $VERSION"
+	;;
+full)
+	case "${2:-}" in
+	on)
+		tun=${3:-}
+		[[ $tun =~ $IF_RE && $tun != en* && $tun != bridge* ]] || die "bad tunnel interface"
+		ifconfig "$tun" 2>/dev/null | grep -q "inet " || die "tunnel $tun is not up"
+		full_off
+		# two half routes win over the default route without replacing it (the VPN's own server route stays)
+		route -q -n add -net 0.0.0.0/1 -interface "$tun" >/dev/null || die "could not add route 0.0.0.0/1 via $tun"
+		route -q -n add -net 128.0.0.0/1 -interface "$tun" >/dev/null || { route -q -n delete -net 0.0.0.0/1 -interface "$tun"; die "could not add route 128.0.0.0/1 via $tun"; }
+		echo "$tun" > "$FULL"
+		echo "ok all traffic via $tun"
+		;;
+	off)
+		full_off
+		echo "ok full-tunnel routes removed"
+		;;
+	*) die "usage: full on <tun_if> | full off" ;;
+	esac
+	;;
+disable)
+	full_off
+	pfctl -q -a "$ANCHOR" -F all 2>/dev/null
+	if [ -f "$STATE" ]; then
+		fwd=$(sed -n 's/.*fwd=\([0-9]\).*/\1/p' "$STATE")
+		redir=$(sed -n 's/.*redir=\([0-9]\).*/\1/p' "$STATE")
+		tok=$(sed -n 's/.*token=\([0-9]*\).*/\1/p' "$STATE")
+		sysctl -w net.inet.ip.forwarding="${fwd:-0}" >/dev/null
+		sysctl -w net.inet.ip.redirect="${redir:-1}" >/dev/null
+		[ -n "$tok" ] && pfctl -q -X "$tok" 2>/dev/null
+	fi
+	rm -f "$STATE" "$RULES"
+	echo "ok disabled"
+	;;
+selftest)
+	tmp=$(mktemp)
+	rules en0 192.0.2.0/24 192.0.2.1 utun9 10.0.0.1 1 > "$tmp"
+	pfctl -q -n -a "$ANCHOR" -f "$tmp" && echo "ok rules with tunnel"
+	rules en0 192.0.2.0/24 192.0.2.1 - - 1 > "$tmp"
+	pfctl -q -n -a "$ANCHOR" -f "$tmp" && echo "ok rules without tunnel (kill switch)"
+	rules en0 192.0.2.0/24 192.0.2.1 - - 0 > "$tmp"
+	pfctl -q -n -a "$ANCHOR" -f "$tmp" && echo "ok rules without tunnel (direct fallback)"
+	rm -f "$tmp"
+	;;
+*)
+	sed -n '2,13p' "$0"
+	exit 1
+	;;
+esac

@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checks
+        run: |
+          python3 -m py_compile dlus.py
+          python3 macos/check_names.py dlus.py
+          python3 macos/check_js.py dlus.py
+      - name: Build dlus.app and DMG (universal, ad-hoc signed)
+        run: bash macos/build_dmg.sh
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/dlus-*.dmg
+          generate_release_notes: true

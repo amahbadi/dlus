@@ -1,0 +1,33 @@
+# --- never published: local state, builds, backups ---
+old/
+dist/
+work/
+*.dmg
+__pycache__/
+*.pyc
+*.log
+*.new
+*.orig
+*.bak
+*.tmp
+.DS_Store
+
+# local configuration / secrets (dlus keeps its own state in ~/.dlus, outside the repo)
+.env
+.env.*
+*.local
+local.*
+settings.json
+state.json
+ui-key
+media-key
+*.key
+*.pem
+
+# editor / tool folders
+.vscode/
+.idea/
+.claude/
+
+# screenshots are added only after review
+docs/screenshots/*.png

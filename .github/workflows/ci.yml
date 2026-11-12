@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python compiles
+        run: python3 -m py_compile dlus.py
+      - name: No undefined names
+        run: python3 macos/check_names.py dlus.py
+      - name: Embedded JavaScript syntax
+        run: python3 macos/check_js.py dlus.py
+      - name: Shell scripts syntax
+        run: for f in gateway/*.sh gateway/dlus-gw macos/*.sh macos/uninstall.command; do bash -n "$f"; done
+      - name: Native app compiles
+        run: swiftc -O -target arm64-apple-macos12.0 -o /tmp/dlus macos/main.swift
