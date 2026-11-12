@@ -141,6 +141,14 @@ class Servers(unittest.TestCase):
         self.assertEqual(data, self.body[100:200])
         self.assertEqual(self.req("GET", "/stream/%s/x" % did, key=False)[0], 401)
 
+    def test_stream_range_edge_cases(self):
+        did, mk = self.d.r["id"], self.m.media_key
+        st, data, r = self.req("GET", "/stream/%s/x?ik=%s" % (did, mk), headers={"Range": "bytes=-100"}, key=False)
+        self.assertEqual((st, data), (206, self.body[-100:]))
+        self.assertEqual(self.req("GET", "/stream/%s/x?ik=%s" % (did, mk), headers={"Range": "bytes=99999999-"}, key=False)[0], 416)
+        st, data, r = self.req("HEAD", "/stream/%s/x?ik=%s" % (did, mk), key=False)
+        self.assertEqual((st, r.getheader("Content-Length")), (200, str(len(self.body))))
+
     def test_settings_roundtrip(self):
         st, _ = self.api("/api/settings", {"limit_mb": 3, "max_active": 2, "sched_on": False, "notify": False})
         self.assertEqual(st, 200)

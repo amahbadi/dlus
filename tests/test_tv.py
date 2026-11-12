@@ -115,6 +115,28 @@ class TV(unittest.TestCase):
         except ValueError:
             pass
 
+    def test_4b_buttons_player_keys_and_offline_tv(self):
+        self.act("pair")
+        for name in ("VOLUMEUP", "VOLUMEDOWN", "MUTE", "CHANNELUP", "CHANNELDOWN", "HOME", "INFO"):
+            try:
+                self.act("button", {"name": name})
+            except ValueError:
+                pass
+        self.m.tv_now = {"num": 1, "t": 5, "dur": 100, "playing": True, "q": "", "ip": "127.0.0.1", "at": time.time()}
+        for name in ("PAUSE", "RIGHT", "RED"):
+            self.act("button", {"name": name})  # the dlus player is open on the TV: keys go to it
+        self.assertTrue(self.m.tv_cmds)
+        self.m.tv_now = None
+        with self.assertRaises(ValueError):
+            self.act("button", {"name": "NOT-A-KEY"})
+        self.m.settings["tvs"].append({"id": "offtv", "ip": "192.0.2.1", "name": "Off TV", "mac": "aa:bb:cc:dd:ee:ff"})
+        self.m.tv_up = lambda ip, wait=1.0: False  # really offline (a VPN in TUN mode may answer for any address)
+        try:
+            with self.assertRaises(ValueError):
+                self.m.tv_ensure("offtv", wait=1)
+        finally:
+            del self.m.tv_up
+
     def test_4_open_dlus_on_the_tv(self):
         self.act("pair")
         self.act("open", {})

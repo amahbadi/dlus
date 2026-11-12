@@ -97,6 +97,27 @@ class Downloading(unittest.TestCase):
         d = run_until(m2, did)
         self.assertEqual(open(d.out, "rb").read(), body)
 
+    def test_damaged_piece_is_fetched_again_alone(self):  # the core promise: a resumed or broken file is never corrupted
+        body = os.urandom(3 * 1024 * 1024 + 11)
+        self.fs.put("damaged.mkv", body)
+        self.fs.corrupt_big = 1
+        m = manager()
+        d = run_until(m, m.add(self.fs.url("damaged.mkv"), conns=1))
+        self.assertEqual(open(d.out, "rb").read(), body)
+        self.assertGreaterEqual(d.r.get("fails", 0), 1, d.events if hasattr(d, "events") else "")
+
+    def test_refresh_link_and_clear(self):
+        self.fs.put("old.bin", b"x" * 1000)
+        self.fs.put("new.bin", b"x" * 1000)
+        m = manager()
+        did = m.add(self.fs.url("old.bin"), start=False)
+        m.action(did, "refresh", {"url": self.fs.url("new.bin")})
+        self.assertEqual(m.dls[did].r["url"], self.fs.url("new.bin"))
+        m.action(did, "resume", {})
+        run_until(m, did)
+        m.action("all", "clear", {})
+        self.assertNotIn(did, m.dls)
+
     def test_existing_partial_file_is_adopted(self):
         body = os.urandom(2 * 1024 * 1024 + 5)
         self.fs.put("adopt.bin", body)

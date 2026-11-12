@@ -15,6 +15,7 @@ class FileServer:
         self.ranges = True  # answer Range requests with 206
         self.delay = 0.0  # seconds to wait per 64 KB (slow server)
         self.fail_ranges = 0  # this many range requests answer 500 first
+        self.corrupt_big = 0  # this many large range answers arrive damaged (small check samples stay correct)
         self.names = {}  # url path -> Content-Disposition file name
         self.hits = []
         srv = self
@@ -63,6 +64,9 @@ class FileServer:
                 self.end_headers()
                 if head:
                     return
+                if rng and b - a > 200000 and srv.corrupt_big > 0:
+                    srv.corrupt_big -= 1
+                    data = data[:a + 1000] + bytes(x ^ 0xFF for x in data[a + 1000:a + 2000]) + data[a + 2000:]
                 try:
                     i = a
                     while i <= b:
