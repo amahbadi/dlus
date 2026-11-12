@@ -2,9 +2,7 @@
 # Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """Subtitle sync on real (generated) films: against the film's own subtitle track, a corrected copy for another cut,
 and the HLS pacing that keeps ffmpeg just ahead of the TV. Skipped without ffmpeg."""
-import http.client
 import importlib.util
-import json
 import os
 import random
 import shutil
