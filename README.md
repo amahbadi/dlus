@@ -117,6 +117,9 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
 | 🐍 Python 3 | built in with the developer tools: `xcode-select --install` |
 | 🎬 [ffmpeg](https://ffmpeg.org) | for TV streaming, subtitles and previews: `brew install ffmpeg` |
 
+> [!NOTE]
+> 🐧 **Linux (Ubuntu / Debian):** planned as a `.deb` - the design and the tasks are open for contributors: [docs/LINUX.md](docs/LINUX.md) · [#21](https://github.com/amahbadi/dlus/issues/21).
+
 **Updating:** download the new DMG and drag dlus onto Applications again (replace). Your downloads, settings and TV pairing stay; older settings are moved forward automatically. What changed: [CHANGELOG.md](CHANGELOG.md).
 
 > [!TIP]

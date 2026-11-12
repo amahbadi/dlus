@@ -48,11 +48,17 @@ dlus is a server: it downloads, converts and streams from the Mac. An iPad canno
 
 Goal: `dlus_<version>_all.deb` for Ubuntu 22.04+ / Debian 12+, built and tested in the pipeline, published with every release.
 
-- [ ] Make the core platform-neutral: replace macOS-only calls (`osascript` notifications, `caffeinate`, `xattr` quarantine, `ifconfig`/`netstat`/`arp` parsing, `networksetup`, VideoToolbox) with Linux equivalents behind small helpers (`notify-send`, `systemd-inhibit`, `ip`, VA-API / software encode)
-- [ ] Window: open the UI in the default browser (or a small GTK/WebKit window later); Mac-only features (VPN router, Mac player window) hidden on Linux
-- [ ] Service: a `systemd --user` unit instead of the LaunchAgent
-- [ ] Package: `.deb` with `Depends: python3 (>= 3.9), curl, ffmpeg`, files under `/usr/lib/dlus`, launcher `/usr/bin/dlus`, desktop entry and icons; `postinst` enables the user service
-- [ ] VPN router on Linux: `nftables` + IP forwarding helper with the same checked-command design (polkit / sudoers) - separate milestone
-- [ ] Pipeline: build the `.deb` on `ubuntu-latest`, `lintian`, install it in clean `ubuntu:22.04`, `ubuntu:24.04` and `debian:12` containers, start the service, call `/api/health`, run the security tests on Linux
-- [ ] Release: attach the `.deb` + provenance + checksum; README install section for Ubuntu / Debian
-- [ ] Optional: an APT repository (signed) so `apt upgrade` updates dlus
+> [!TIP]
+> **Want to help?** The full design, every macOS → Linux replacement and the package layout are in **[docs/LINUX.md](LINUX.md)**. Progress is tracked in **[#21](https://github.com/amahbadi/dlus/issues/21)**; each task below is one issue and one pull request.
+
+- [ ] [#11](https://github.com/amahbadi/dlus/issues/11) platform helpers: notifications (`notify-send`), staying awake (`systemd-inhibit`), quarantine, reveal / open (`xdg-open`) - *good first issue*
+- [ ] [#12](https://github.com/amahbadi/dlus/issues/12) network information with `ip -j` / `nmcli` instead of `ifconfig` / `route` / `scutil`
+- [ ] [#13](https://github.com/amahbadi/dlus/issues/13) devices on the network with `ip neigh` instead of `arp` - *good first issue*
+- [ ] [#14](https://github.com/amahbadi/dlus/issues/14) video conversion with VA-API or `libx265` instead of VideoToolbox
+- [ ] [#15](https://github.com/amahbadi/dlus/issues/15) `systemd --user` service and the `dlus` launcher (UI in the default browser)
+- [ ] [#16](https://github.com/amahbadi/dlus/issues/16) `.deb` package: `/usr/lib/dlus`, `/usr/bin/dlus`, desktop entry, icons; `Depends: python3 (>= 3.9), curl, ffmpeg`
+- [ ] [#17](https://github.com/amahbadi/dlus/issues/17) test suite in CI on Ubuntu - *good first issue*
+- [ ] [#18](https://github.com/amahbadi/dlus/issues/18) install tests in clean `ubuntu:22.04`, `ubuntu:24.04` and `debian:12` containers
+- [ ] [#19](https://github.com/amahbadi/dlus/issues/19) publish the `.deb` with provenance and checksums in every release; README install section
+- [ ] [#20](https://github.com/amahbadi/dlus/issues/20) *(later)* router with an nftables helper, same checked-command design as on macOS
+- [ ] *(later)* a signed APT repository so `apt upgrade` updates dlus; a native GTK window
