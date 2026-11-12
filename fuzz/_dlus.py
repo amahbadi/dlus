@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """load dlus.py for the fuzz targets (state in a throwaway folder)"""
 import importlib.util
 import os

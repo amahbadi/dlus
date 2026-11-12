@@ -116,6 +116,8 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
 | 🐍 Python 3 | built in with the developer tools: `xcode-select --install` |
 | 🎬 [ffmpeg](https://ffmpeg.org) | for TV streaming, subtitles and previews: `brew install ffmpeg` |
 
+**Updating:** download the new DMG and drag dlus onto Applications again (replace). Your downloads, settings and TV pairing stay; older settings are moved forward automatically. What changed: [CHANGELOG.md](CHANGELOG.md).
+
 > [!TIP]
 > **Check your download** - every release is built by GitHub Actions and signed:
 > ```sh
@@ -167,7 +169,7 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome - see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+Issues and pull requests are welcome - see **[CONTRIBUTING.md](CONTRIBUTING.md)** · [Code of Conduct](CODE_OF_CONDUCT.md) · [Governance](GOVERNANCE.md) · [Architecture](docs/ARCHITECTURE.md) · [Assurance case](docs/ASSURANCE-CASE.md)
 
 ```text
 fork → branch → pull request → 🤖 security checks comment on it → fix until ✅ → maintainer review → merge

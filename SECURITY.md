@@ -121,4 +121,6 @@ Please report it privately: **Security → Report a vulnerability** on this repo
 | 🛠️ Fix released as a new version | as soon as possible; **within 60 days** for confirmed vulnerabilities, sooner for critical ones |
 | 📣 Public advisory and credit (if you want it) | when the fix is released, listed in the [changelog](CHANGELOG.md) |
 
-Only the latest release gets security fixes - please update.
+**How we handle a report:** the maintainer reproduces it privately, rates its severity, prepares the fix with a regression test in a private fork of the advisory, releases a new version, then publishes a GitHub security advisory (with a CVE when it applies) and the changelog entry. Reporters are **credited by name** in the advisory and the [changelog](CHANGELOG.md) unless they ask to stay anonymous.
+
+Only the latest release gets security fixes - please update. Design and threat model: [docs/ASSURANCE-CASE.md](docs/ASSURANCE-CASE.md).

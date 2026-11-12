@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """Fuzz: subtitle files and release names from the internet never crash the parsers."""
 import sys
 

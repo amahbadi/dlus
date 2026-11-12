@@ -33,3 +33,5 @@ jobs:
         run: sudo bash gateway/dlus-gw selftest | tee /dev/stderr | grep -c '^ok rules' | grep -qx 3
       - name: Native app compiles
         run: swiftc -O -target arm64-apple-macos12.0 -o /tmp/dlus macos/main.swift
+      - name: Repeatable build (dlus.app identical in two builds)
+        run: bash macos/check_repeatable.sh

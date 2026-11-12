@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """Security checks for dlus that run in CI (python3 -m unittest discover tests). Standard library only."""
 import importlib.util
 import os

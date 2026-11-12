@@ -14,3 +14,4 @@ updates:
     allow:
       - dependency-name: bandit
       - dependency-name: atheris
+      - dependency-name: ruff

@@ -11,6 +11,8 @@
 #   dlus-gw selftest                        syntax-check the rules, change nothing
 #   dlus-gw full on <tun_if> | full off     send ALL of this Mac's traffic into a tunnel (for split-tunnel VPNs)
 #   dlus-gw version
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 set -u
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 ANCHOR="com.apple/dlus"

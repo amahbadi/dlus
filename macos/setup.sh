@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 # Installs / updates the dlus background service (launchd agent) for this copy of dlus.app. Run by the app at every start.
 set -u
 RES="$(cd "$(dirname "$0")" && pwd)"  # setup.sh lives in dlus.app/Contents/Resources

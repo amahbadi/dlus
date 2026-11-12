@@ -3,6 +3,16 @@
 > [!NOTE]
 > Order: finish **macOS** completely (security, releases), then **Linux**.
 
+## 📅 The next 12 months (to the end of 2027)
+
+| | We intend to | We do not intend to |
+|---|---|---|
+| 🍏 macOS | keep dlus secure and current with each macOS release; raise test coverage to 80 %+; more LG TV models tested | a Mac App Store or iPad version |
+| 🐧 Linux | a `.deb` for Ubuntu / Debian with install tests in CI (section 2) | other package formats before the `.deb` is solid |
+| 🔒 Security | keep every scanner green, answer reports within the times in SECURITY.md, OpenSSF Silver | accounts, cloud services or telemetry |
+| 👥 Project | find a second reviewer / maintainer | |
+
+
 ## 🍏 1. macOS - close out
 
 - [x] Security review and fixes (7.23): device approval, activity log, checksums + Verify, quarantine, https-only redirects, root helper in a root-only folder, only listed devices may route, TV certificate pinning, playlist-disguise guard, zip-bomb limits, safe shared folders

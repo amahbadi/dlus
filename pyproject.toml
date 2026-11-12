@@ -1,0 +1,10 @@
+# Coding standard for dlus (enforced in CI with ruff). dlus uses only the Python standard library;
+# its external programs are listed in the Brewfile.
+[tool.ruff]
+line-length = 160
+target-version = "py39"
+extend-exclude = ["old", "dist", "work"]
+
+[tool.ruff.lint]
+# syntax errors, undefined names, unused imports / variables, bad comparisons
+select = ["E9", "F"]

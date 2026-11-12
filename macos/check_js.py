@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """syntax-check the JavaScript embedded in dlus.py (Mac page, TV player, shared subtitle code) with node --check"""
 import ast, subprocess, sys, tempfile, os
 s = open(sys.argv[1]).read()

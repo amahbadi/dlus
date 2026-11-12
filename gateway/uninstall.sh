@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 # Removes the dlus VPN-router helper and its firewall rules:  sudo bash <dlus>/gateway/uninstall.sh
 set -u
 [ "$(id -u)" = 0 ] || { echo "run it with sudo: sudo bash $0"; exit 1; }

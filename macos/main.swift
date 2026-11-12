@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 // dlus.app - native window for dlus. The work (downloads, TV, sharing) runs in a background
 // service (launchd agent com.dlus, installed by setup.sh); this app shows its UI in a WebKit view.
 import AppKit

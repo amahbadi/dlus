@@ -1,6 +1,9 @@
 <h1 align="center">🤝 Contributing to dlus</h1>
 
-<p align="center">Thanks for helping! Issues and pull requests are welcome.</p>
+<p align="center">Thanks for helping! Issues and pull requests are welcome.<br>Please follow the <a href="CODE_OF_CONDUCT.md">Code of Conduct</a>. How decisions are made: <a href="GOVERNANCE.md">GOVERNANCE.md</a>.</p>
+
+> [!TIP]
+> **Set up a development Mac in one step:** `make setup` (tools from the [Brewfile](Brewfile)), then `make test`, `make run`, `make dmg`. Design overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## 🐞 Issues
 
@@ -18,7 +21,7 @@ Bugs and ideas: open an [issue](https://github.com/amahbadi/dlus/issues) - templ
 fork → branch → pull request → 🤖 checks comment on it → fix until ✅ → maintainer review → merge
 ```
 
-1. **Fork** the repository and create a branch.
+1. **Fork** the repository and create a branch. **Sign off every commit** (`git commit -s`) - this is the [Developer Certificate of Origin](GOVERNANCE.md#-developer-certificate-of-origin-dco), checked on every pull request.
 2. **Keep changes focused** and follow the code standard:
    - Python 3.9+, **standard library only** (no new dependencies), [PEP 8](https://peps.python.org/pep-0008/) style as in the code around you, lines up to 160 characters
    - external programs only with argument lists (never `shell=True`), files only inside the folders dlus owns, input from the network always checked
@@ -42,6 +45,7 @@ fork → branch → pull request → 🤖 checks comment on it → fix until ✅
 | **CI** | compile, embedded JavaScript, [security tests](tests/test_security.py), firewall rules in macOS `pf`, Swift build |
 | **Security** | Bandit, Semgrep, Gitleaks (secrets, whole history), ShellCheck, [fuzzing](fuzz/) |
 | **CodeQL** | GitHub's code analysis |
+| **DCO** | every commit signed off by its author |
 
 - ❌ If something fails, a bot comment lists **what to fix** and the PR gets the label `security: fix needed`.
 - ✅ When everything is green, the label changes to `ready for review` and the maintainer reviews it.

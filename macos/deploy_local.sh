@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 # Build the DMG and install it on THIS Mac (for development). Stops at the first error; the installed app
 # is only replaced after the new one is built, mounted and verified.
 set -euo pipefail

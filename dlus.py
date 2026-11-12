@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """dlus - downloader for us. Fast, safe, resumable download manager with a live web UI
 (Python stdlib + curl, macOS first).
 
@@ -27,7 +29,6 @@ import collections
 import errno
 import getpass
 import glob
-import gzip
 import fcntl
 import hashlib
 import html
@@ -52,7 +53,6 @@ import subprocess
 import sys
 import threading
 import time
-import traceback
 import urllib.parse
 import urllib.request
 import uuid
@@ -61,7 +61,7 @@ import zlib
 from xml.sax.saxutils import escape as xesc
 
 PORT = 8642
-VERSION = "7.25"
+VERSION = "7.26"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))  # ~/Desktop/dlus, or dlus.app/Contents/Resources when installed
 ICON_DIR = os.path.join(APP_DIR, "icons")
 APP_HEAD = ('<link rel=manifest href="/manifest.webmanifest"><link rel=icon type=image/png sizes=192x192 href="/icon-192.png">'
@@ -263,6 +263,23 @@ def rd(p, default=""):
 def wr(p, s):
     with open(p, "w") as f:
         f.write(s)
+
+
+SECRET_KEYS = ("lan_token", "proxy_user", "proxy_pass", "tv_keys", "tv_pins")  # kept in ~/.dlus/secrets.json, not in settings
+
+
+def wr_private(p, s):
+    """durable atomic write of a secret file: only this user can read it (mode 600), also its backup"""
+    fd = os.open(p + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(s)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(p + ".new", 0o600)
+    if os.path.exists(p):
+        shutil.copyfile(p, p + ".bak")
+        os.chmod(p + ".bak", 0o600)
+    os.replace(p + ".new", p)
 
 
 def wr_sync(p, s):
@@ -2893,6 +2910,8 @@ class Manager:
         self.gw_tvnet = {}
         self.settings = dict(self.DEFAULTS)
         self.settings.update(load_json(os.path.join(STATE_DIR, "settings.json"), {}))
+        sec = load_json(os.path.join(STATE_DIR, "secrets.json"), {})  # codes, passwords, TV keys: their own file
+        self.settings.update({k: v for k, v in sec.items() if k in SECRET_KEYS})
         if len(self.settings.get("lan_token") or "") != 6:
             self.settings["lan_token"] = short_code()
         self.settings.setdefault("dlna_uuid", str(uuid.uuid4()))
@@ -3061,7 +3080,13 @@ class Manager:
     def _save(self, data):
         try:
             wr_sync(os.path.join(STATE_DIR, "state.json"), data)
-            wr_sync(os.path.join(STATE_DIR, "settings.json"), json.dumps(self.settings, indent=1))
+            pub = {k: v for k, v in self.settings.items() if k not in SECRET_KEYS}
+            wr_private(os.path.join(STATE_DIR, "secrets.json"), json.dumps({k: self.settings[k] for k in SECRET_KEYS if k in self.settings}, indent=1))
+            wr_sync(os.path.join(STATE_DIR, "settings.json"), json.dumps(pub, indent=1))
+            bak = os.path.join(STATE_DIR, "settings.json.bak")
+            if any('"%s"' % k in rd(bak) for k in SECRET_KEYS):  # an older backup still holding secrets
+                wr_sync(bak, json.dumps(pub, indent=1))
+                rm(bak + ".bak")
             wr_sync(os.path.join(STATE_DIR, "stats.json"), json.dumps(self.stats))
         except OSError:
             log.exception("save")
@@ -5206,7 +5231,6 @@ def send_compat(h, m, d, fmt, t=0.0, a=0, ch=0, snd=None, seek_hdr=False, qualit
         return h.out(501, {"error": "ffmpeg is not installed (brew install ffmpeg)"})
     q_eff = quality if quality is not None or fmt not in ("mkv", "mkvsub") else (m.settings.get("dlna_quality") or "saver")
     copy = fmt in ("mkv", "mkvsub") and q_eff not in QUALITY and t > 0
-    land = HLS.landing("http://127.0.0.1:%d/stream/%s/x?ik=%s" % (m.port, d.r["id"], m.media_key), t) if copy else t
     # ffmpeg times input 0 from the asked t (then shifts every stream equally): the subtitle is cut at t too
     cmd, info, sub_in = compat_cmd(m, d, fmt, t, a, ch, snd, quality)
     if copy and "-ss" in cmd:

@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 # Installs the dlus VPN-router helper. Run once:  sudo bash <dlus>/gateway/install.sh (dlus shows the exact command)
 # - copies dlus-gw to /Library/PrivilegedHelperTools (a root-only folder, so no other program can swap the file)
 # - allows YOUR user to run exactly that one file with sudo, nothing else

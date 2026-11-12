@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """Fuzz: file names from servers can never escape the download folder or hide their real type."""
 import re
 import sys

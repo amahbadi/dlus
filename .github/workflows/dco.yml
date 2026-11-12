@@ -1,0 +1,32 @@
+# Developer Certificate of Origin: every commit in a pull request must be signed off by its author (git commit -s).
+name: DCO
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dco:
+    name: dco
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const commits = await github.paginate(github.rest.pulls.listCommits, { ...context.repo, pull_number: context.payload.pull_request.number, per_page: 100 });
+            const bad = [];
+            for (const c of commits) {
+              if (c.parents && c.parents.length > 1) continue; // merge commits
+              if (c.author && c.author.type === 'Bot') continue; // Dependabot and other apps
+              const email = (c.commit.author.email || '').toLowerCase();
+              const lines = (c.commit.message.match(/^Signed-off-by: .+<([^>]+)>\s*$/gmi) || []).map(l => l.match(/<([^>]+)>/)[1].toLowerCase());
+              if (!lines.includes(email)) bad.push(`${c.sha.slice(0, 7)} ${c.commit.message.split('\n')[0]}`);
+            }
+            if (bad.length) {
+              core.setFailed(`These commits are not signed off by their author (Developer Certificate of Origin, see GOVERNANCE.md):\n${bad.join('\n')}\n\nFix: git rebase --signoff ${context.payload.pull_request.base.ref} && git push --force-with-lease`);
+            } else {
+              core.info(`All ${commits.length} commits are signed off.`);
+            }

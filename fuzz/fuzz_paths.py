@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """Fuzz: no path from the network gets out of a shared folder or into hidden files."""
 import os
 import sys

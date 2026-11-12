@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 # Builds dist/dlus.app and dist/dlus-<version>.dmg from ~/Desktop/dlus.   bash macos/build_dmg.sh
 set -eu
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,7 +25,9 @@ APP="$OUT/dlus.app"; C="$APP/Contents"
 mkdir -p "$C/MacOS" "$C/Resources"
 # native window (Swift + WebKit), one binary for Apple silicon and Intel
 for a in arm64 x86_64; do
-	swiftc -O -target $a-apple-macos12.0 -o "$WORK/dlus-$a" "$SRC/macos/main.swift"
+	# honours SWIFTC (compiler) and SWIFTFLAGS / LDFLAGS (extra flags are added, never replaced)
+	# shellcheck disable=SC2086
+	"${SWIFTC:-swiftc}" -O -target "$a-apple-macos12.0" ${SWIFTFLAGS:-} ${LDFLAGS:+-Xlinker $LDFLAGS} -o "$WORK/dlus-$a" "$SRC/macos/main.swift"
 done
 lipo -create "$WORK/dlus-arm64" "$WORK/dlus-x86_64" -output "$C/MacOS/dlus"
 cp "$SRC/macos/setup.sh" "$C/Resources/setup.sh"; chmod 755 "$C/Resources/setup.sh"

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """stop a deploy when the code uses a name that is defined nowhere (e.g. a helper lost while editing)"""
 import ast, builtins, sys
 src = open(sys.argv[1]).read()

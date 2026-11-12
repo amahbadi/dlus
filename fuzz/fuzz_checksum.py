@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 """Fuzz: checksum text from users or servers never crashes and never yields a wrong-size hash."""
 import sys
 

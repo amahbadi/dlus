@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Ali Akbar Mahbadi and dlus contributors
 # Removes the dlus background service (and, if installed, the VPN-router helper). Your downloads and ~/.dlus stay.
 launchctl bootout "gui/$(id -u)/com.dlus" 2>/dev/null
 rm -f "$HOME/Library/LaunchAgents/com.dlus.plist"

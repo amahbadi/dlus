@@ -28,6 +28,8 @@ jobs:
           python-version: "3.13"
       - name: Install Bandit (pinned with hashes)
         run: pip install --quiet --require-hashes -r .github/requirements-security.txt
+      - name: Coding standard (ruff, see pyproject.toml)
+        run: ruff check . 2>&1 | tee ruff.txt
       - name: Bandit (Python security linter, medium and high)
         run: bandit -q -ll dlus.py macos/*.py tests/*.py 2>&1 | tee bandit.txt
       - name: Keep the findings for the pull request comment
@@ -35,7 +37,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: findings-sast
-          path: bandit.txt
+          path: |
+            bandit.txt
+            ruff.txt
           retention-days: 7
 
   semgrep:

@@ -5,6 +5,13 @@
 > [!NOTE]
 > Security fixes are marked 🔒. dlus has had no publicly known vulnerabilities so far; the fixes below were found by our own review and scanners.
 
+## 7.26 - 2026-11-12
+
+- 🔒 Credentials (TV code, proxy password, TV pairing keys and certificates) moved out of `settings.json` into their own `secrets.json` (mode 600); existing setups are moved automatically and old backups cleaned
+- ⚡ TV streams start faster: an unused ffmpeg probe on every start was removed
+- 🤖 Repeatable build checked in CI (dlus.app bit-for-bit identical in two builds); coding standard enforced with ruff; DCO sign-off check on pull requests
+- 📖 Governance, Code of Conduct, architecture, assurance case, one-year roadmap, `make setup` + Brewfile, license headers in every source file
+
 ## 7.25 - 2026-11-12
 
 - 🔒 Every file the network can ask for (icons, fonts, shared folders, the file browser, TV streams) goes through one checked path function that can never leave its folder
