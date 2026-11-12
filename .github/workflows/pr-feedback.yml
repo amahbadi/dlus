@@ -37,7 +37,7 @@ jobs:
             const { data: p } = await github.rest.pulls.get({ ...context.repo, pull_number: pr });
             if (p.head.sha !== process.env.HEAD_SHA) { core.info('newer commits on the PR - skipping'); return; }
             const results = Object.fromEntries(fs.readFileSync('report/results.txt', 'utf8').trim().split('\n').map(l => l.split('=')));
-            const names = { sast: 'Code scan (Bandit + Semgrep)', secrets: 'Secrets (Gitleaks, whole history)', shell: 'Shell scripts + root helper (ShellCheck)' };
+            const names = { sast: 'Python security lint (Bandit)', semgrep: 'Code scan (Semgrep)', secrets: 'Secrets (Gitleaks, whole history)', shell: 'Shell scripts + root helper (ShellCheck)', fuzz: 'Fuzzing (Atheris)' };
             const failed = Object.keys(names).filter(k => results[k] !== 'success');
             const clip = (f, n) => { try { const t = fs.readFileSync('report/' + f, 'utf8').replace(/`/g, "'"); return t.length > n ? t.slice(0, n) + '\n...' : t; } catch { return ''; } };
             let body = '<!-- dlus-security -->\n';
@@ -46,7 +46,7 @@ jobs:
             } else {
               body += '### ❌ Security checks found problems\n\nPlease fix these and push again - the checks run by themselves on every push:\n\n';
               for (const k of failed) body += `- **${names[k]}**: ${results[k]}\n`;
-              for (const [f, title] of [['bandit.txt', 'Bandit'], ['semgrep.txt', 'Semgrep'], ['shellcheck.txt', 'ShellCheck']]) {
+              for (const [f, title] of [['bandit.txt', 'Bandit'], ['semgrep.txt', 'Semgrep'], ['shellcheck.txt', 'ShellCheck'], ['fuzz.txt', 'Fuzzing']]) {
                 const t = clip(f, 12000);
                 if (t.trim()) body += `\n<details><summary>${title}</summary>\n\n\`\`\`\n${t}\n\`\`\`\n</details>\n`;
               }

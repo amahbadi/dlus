@@ -29,13 +29,25 @@ jobs:
       - name: Checksums
         run: cd dist && shasum -a 256 dlus-*.dmg > SHA256SUMS && cat SHA256SUMS
       - name: Build provenance (proves the DMG was built here, from this tag)
+        id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/dlus-*.dmg
+      - name: Signature and provenance files next to the DMG
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          for f in dist/dlus-*.dmg; do
+            cp "$BUNDLE" "$f.sigstore.json"   # Sigstore bundle: cosign / gh attestation verify --bundle
+            python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["dsseEnvelope"], separators=(",", ":")))' "$BUNDLE" > "$f.intoto.jsonl"  # SLSA provenance (DSSE envelope)
+          done
+          ls -l dist
       - name: Publish release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           files: |
             dist/dlus-*.dmg
+            dist/dlus-*.dmg.sigstore.json
+            dist/dlus-*.dmg.intoto.jsonl
             dist/SHA256SUMS
           generate_release_notes: true

@@ -76,6 +76,7 @@ It is kept in `~/.dlus/audit.json` (last 2000 entries).
 | Check | What it looks for |
 |---|---|
 | [Security workflow](.github/workflows/security.yml) | Bandit and Semgrep (Python, command injection, secrets, GitHub Actions), Gitleaks over the whole history, ShellCheck on the root helper and installers |
+| [Fuzzing](fuzz/) | Atheris (Google's fuzzer) throws millions of random inputs at the parsers that read untrusted data: file names, checksums, subtitles, release names, shared-folder paths |
 | [CodeQL](.github/workflows/codeql.yml) | GitHub's code analysis (`security-extended`) for the Python code and the workflows |
 | [CI](.github/workflows/ci.yml) | [security tests](tests/test_security.py), the helper's firewall rules loaded by macOS `pf`, every build |
 | [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/amahbadi/dlus) | an independent rating of how the project is run (pinned actions, branch protection, reviews ...) |
@@ -87,9 +88,11 @@ Pull requests get a comment with the findings and must pass every check before t
 Every release is built by GitHub Actions from the tagged source and carries a signed build provenance:
 
 ```sh
-gh attestation verify dlus-7.23.dmg --repo amahbadi/dlus   # proves it was built here, from this repository
+gh attestation verify dlus-7.24.dmg --repo amahbadi/dlus   # proves it was built here, from this repository
 shasum -a 256 -c SHA256SUMS                                # matches the checksum published with the release
 ```
+
+Each release also carries `dlus-<version>.dmg.sigstore.json` (the Sigstore signature bundle, for offline checks with `gh attestation verify --bundle` or `cosign`) and `dlus-<version>.dmg.intoto.jsonl` (the SLSA build provenance).
 
 ## Reporting a problem
 

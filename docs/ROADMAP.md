@@ -7,7 +7,9 @@ Order: finish macOS completely (security, releases), then Linux.
 - [x] Security review and fixes (7.23): device approval, activity log, checksums + Verify, quarantine, https-only redirects, root helper in a root-only folder, only listed devices may route, TV certificate pinning, playlist-disguise guard, zip-bomb limits, safe shared folders
 - [x] Security pipeline: Bandit, Semgrep, CodeQL, Gitleaks, ShellCheck, security tests, pf rule check on macOS; pull-request feedback comment + labels; pinned actions + Dependabot
 - [x] OpenSSF Scorecard (automatic rating + badge)
-- [x] Signed build provenance and `SHA256SUMS` on every release
+- [x] Signed build provenance, Sigstore bundle, in-toto provenance and `SHA256SUMS` on every release
+- [x] Fuzzing (Atheris) of every parser that reads untrusted input, in the Security workflow
+- [x] No known-vulnerable packages in the pipeline (semgrep from a pinned container image)
 - [ ] OpenSSF Best Practices badge - a self-assessment form at [bestpractices.dev](https://www.bestpractices.dev), filled in by the maintainer (sign in with GitHub)
 - [ ] Developer ID signing + Apple notarization: removes the "unidentified developer" warning. Needs a paid Apple Developer Program membership (maintainer decision); then the release workflow signs and notarizes with secrets
 - [ ] Mac App Store - **not planned**, see below

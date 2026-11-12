@@ -7,10 +7,10 @@ updates:
     groups:
       actions:
         patterns: ["*"]
-  - package-ecosystem: pip # the security scanners (pinned with hashes); their own dependencies move with them
+  - package-ecosystem: pip # bandit and atheris (pinned with hashes); their own dependencies move with them; semgrep is a pinned image
     directory: /.github
     schedule:
       interval: weekly
     allow:
       - dependency-name: bandit
-      - dependency-name: semgrep
+      - dependency-name: atheris

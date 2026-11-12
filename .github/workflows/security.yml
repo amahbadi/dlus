@@ -26,13 +26,33 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
-      - name: Install scanners
+      - name: Install Bandit (pinned with hashes)
         run: pip install --quiet --require-hashes -r .github/requirements-security.txt
       - name: Bandit (Python security linter, medium and high)
         run: bandit -q -ll dlus.py macos/*.py tests/*.py 2>&1 | tee bandit.txt
+      - name: Keep the findings for the pull request comment
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: findings-sast
+          path: bandit.txt
+          retention-days: 7
+
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:1.185.0@sha256:67518c174185a2043fdbed16c70631b79209499b3671178e7194379b48295a0d
+    defaults:
+      run:
+        shell: sh # the semgrep image is minimal (no bash); pipefail is set in the script
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Semgrep (Python, command injection, secrets, GitHub Actions)
-        if: always()
         run: |
+          set -o pipefail
           semgrep scan --metrics=off --error --severity ERROR \
             --config p/python --config p/command-injection --config p/secrets --config p/github-actions \
             dlus.py macos gateway tests .github 2>&1 | tee semgrep.txt
@@ -40,8 +60,8 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: findings-sast
-          path: "*.txt"
+          name: findings-semgrep
+          path: semgrep.txt
           retention-days: 7
 
   secrets:
@@ -79,22 +99,51 @@ jobs:
           path: shellcheck.txt
           retention-days: 7
 
+  fuzz:
+    name: fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Install Atheris (pinned with hashes)
+        run: pip install --quiet --require-hashes -r .github/requirements-fuzz.txt
+      - name: Fuzz the parsers that read untrusted input (60 s each)
+        run: |
+          for f in fuzz/fuzz_*.py; do
+            echo "== $f"
+            (cd fuzz && python "$(basename "$f")" -max_total_time=60 -rss_limit_mb=2048 2>&1 | tail -25) | tee -a fuzz.txt
+          done
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: findings-fuzz
+          path: |
+            fuzz.txt
+            fuzz/crash-*
+          retention-days: 7
+
   report:
     name: report
     if: always() && github.event_name == 'pull_request'
-    needs: [sast, secrets, shell]
+    needs: [sast, semgrep, secrets, shell, fuzz]
     runs-on: ubuntu-latest
     steps:
       - name: Summary for the pull request comment
         env:
           SAST: ${{ needs.sast.result }}
+          SEMGREP: ${{ needs.semgrep.result }}
+          FUZZ: ${{ needs.fuzz.result }}
           SECRETS: ${{ needs.secrets.result }}
           SHELL_RESULT: ${{ needs.shell.result }}
           PR: ${{ github.event.pull_request.number }}
         run: |
           mkdir report
           echo "$PR" > report/pr.txt
-          printf 'sast=%s\nsecrets=%s\nshell=%s\n' "$SAST" "$SECRETS" "$SHELL_RESULT" > report/results.txt
+          printf 'sast=%s\nsemgrep=%s\nsecrets=%s\nshell=%s\nfuzz=%s\n' "$SAST" "$SEMGREP" "$SECRETS" "$SHELL_RESULT" "$FUZZ" > report/results.txt
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
