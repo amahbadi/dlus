@@ -134,6 +134,51 @@ class DeviceNames(unittest.TestCase):
             self.assertIn(dlus.lan_name("1.2.3.4", ""), ("", "1.2.3.4"))
 
 
+class NetworkDetection(unittest.TestCase):
+    """what dlus reads from macOS about the network, from recorded command output (works on any machine)"""
+
+    OUT = {
+        "route": "   route to: default\n    gateway: 192.168.1.1\n  interface: utun6\n",
+        "networksetup": "Hardware Port: Wi-Fi\nDevice: en0\n\nHardware Port: Thunderbolt Bridge\nDevice: bridge0\n",
+        "ifconfig": ("en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500\n\tinet 192.168.1.75 netmask 0xffffff00\n"
+                     "\tstatus: active\nutun6: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1500\n\tinet 172.19.0.1 --> 172.19.0.1\n"
+                     "utun7: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1280\n\tinet 100.92.10.4 --> 100.92.10.4\n"
+                     "utun8: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1400\n\tinet 10.66.0.2 --> 10.66.0.2\n"),
+        "ipconfig": "<dictionary> {\n  SSID : Home-5G\n}\n",
+        "ps": "V2Box\nWindscribe\nlaunchd\n",
+        "scutil--nc": ('* (Connected)      0B3C5D1E-1111-2222-3333-444455556666 VPN (com.v2box.v2box.tunnel)  "V2Box Profile"  [VPN:com.v2box.v2box]\n'
+                       '* (Disconnected)   0B3C5D1E-1111-2222-3333-444455557777 IPSec  "Office"  [IPSec]\n'),
+        "netbird": "Management: Connected\nNetBird IP: 100.92.10.4/16\nProfile: home\n",
+        "scutil--proxy": "<dictionary> {\n  HTTPEnable : 1\n  HTTPProxy : 127.0.0.1\n  HTTPPort : 10808\n}\n",
+    }
+
+    def fake_sh(self, cmd, timeout=5):
+        key = cmd[0] if cmd[0] != "scutil" else "scutil" + cmd[1]
+        return self.OUT.get(key, "")
+
+    def test_reads_wifi_vpns_and_tunnels(self):
+        net = dlus.Net()
+        with mock.patch.object(dlus, "sh", self.fake_sh), mock.patch.object(dlus.shutil, "which", lambda x: "/usr/local/bin/" + x):
+            net.slow()
+        i = net.info
+        self.assertTrue(i["full_tunnel"])  # the internet goes through utun6
+        self.assertEqual(i["iface"], "en0")  # ...while the real network is Wi-Fi
+        self.assertEqual(i["ssid"], "Home-5G")
+        kinds = {t["if"]: t["kind"] for t in i["tunnels"]}
+        self.assertEqual(kinds["utun7"], "NetBird")  # the NetBird address was recognised
+        self.assertIn("V2Box", [v["app"] for v in i["vpns"]])
+        self.assertIn("NetBird", [v["app"] for v in i["vpns"]])
+        for ip, kind in (("100.92.1.1", None), ("198.18.0.1", "proxy tunnel (V2Box / Clash / sing-box)"), ("10.66.0.2", "VPN tunnel")):
+            k = dlus.Net.tun_kind(ip)
+            self.assertTrue(k)
+            if kind:
+                self.assertEqual(k, kind)
+        m = manager()
+        m.net = net
+        names = [t["name"] for t in m.gw.tunnels()]
+        self.assertNotIn("NetBird", names)  # a mesh VPN is not an internet exit for the router
+
+
 class QRCodes(unittest.TestCase):
     def test_sizes(self):
         n = 1
