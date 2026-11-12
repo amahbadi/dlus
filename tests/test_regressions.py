@@ -108,6 +108,12 @@ class Network(unittest.TestCase):
             self.assertTrue(dlus.ProxyServer.local_dest(a), a)
         self.assertFalse(dlus.ProxyServer.local_dest("93.184.216.34"))
 
+    def test_tv_search_without_a_network(self):  # 7.28: "No route to host" from the search crashed Find TVs
+        m = manager()
+        from unittest import mock
+        with mock.patch.object(dlus.socket.socket, "sendto", side_effect=OSError(65, "No route to host")):
+            self.assertIsInstance(m.find_tvs(wait=0.5), list)
+
     def test_tv_needs_tls_12(self):  # 7.25
         self.assertIn("ctx.minimum_version = ssl.TLSVersion.TLSv1_2", SRC)
 

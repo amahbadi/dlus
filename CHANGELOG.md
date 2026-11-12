@@ -7,6 +7,7 @@
 
 ## Unreleased
 
+- 🐛 Find TVs without a network (Wi-Fi off, no multicast route) reports no TVs instead of failing with "No route to host"
 - 🐛 Auto sync: on short videos or sparse subtitles, a subtitle for another film could be reported as "fits" and shifted; it is now recognised as not matching
 - 🐛 Subtitles fitted to another cut: line times could be written up to a second early (rounding)
 - 🐛 Proxy: a local web server is no longer mistaken for a VPN app's proxy (only a real proxy answer counts)

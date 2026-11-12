@@ -3845,13 +3845,16 @@ class Manager:
         ip = self.lan_ip()
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-        if ip != "127.0.0.1":
-            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(ip))
-            s.bind((ip, 0))
-        for st in ("urn:schemas-upnp-org:device:MediaRenderer:1", "urn:schemas-upnp-org:service:AVTransport:1"):
-            msg = ('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: %s\r\n\r\n' % st).encode()
-            for _ in range(2):
-                s.sendto(msg, ("239.255.255.250", 1900))
+        try:  # no network (Wi-Fi off, no multicast route): no TVs found, not an error
+            if ip != "127.0.0.1":
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(ip))
+                s.bind((ip, 0))
+            for st in ("urn:schemas-upnp-org:device:MediaRenderer:1", "urn:schemas-upnp-org:service:AVTransport:1"):
+                msg = ('M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: %s\r\n\r\n' % st).encode()
+                for _ in range(2):
+                    s.sendto(msg, ("239.255.255.250", 1900))
+        except OSError as e:
+            log.warning("TV search: %s", e)
         s.settimeout(0.4)
         locs, end = {}, time.time() + wait
         while time.time() < end:

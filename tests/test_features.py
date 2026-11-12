@@ -233,6 +233,53 @@ class Settings(unittest.TestCase):
         m.conn_limit()
 
 
+class SettingsErrors(unittest.TestCase):
+    def test_busy_ports_and_bad_values(self):
+        m = manager()
+        busy = __import__("socket").socket()
+        busy.bind(("0.0.0.0", 0))  # nosec B104 - a port that is taken on purpose
+        busy.listen(1)
+        port = busy.getsockname()[1]
+        try:
+            with self.assertRaises(ValueError):
+                m.set_settings({"proxy_on": True, "proxy_port": port})
+            self.assertFalse(m.settings["proxy_on"])
+            m.settings["lan_port"] = port
+            with self.assertRaises(ValueError):
+                m.set_settings({"lan_on": True})
+            self.assertFalse(m.settings["lan_on"])
+        finally:
+            busy.close()
+        with self.assertRaises(ValueError):
+            m.set_settings({"proxy_upstream": "ftp://nope"})
+        m.set_settings({"ui_open": "browser", "tv_quality": "1080", "lan_port": 18999})
+        self.assertEqual(m.settings["lan_port"], 18999)
+
+
+class VerifyEdges(unittest.TestCase):
+    def test_verify_branches(self):
+        m = manager()
+        d = local_file(m, "Disk images/v.iso", os.urandom(50000))
+        d.r["status"] = "done"
+        with self.assertRaises(ValueError):
+            m.verify(d, "this is not a checksum")
+        m.verify(d, "")  # no checksum given and none known: just compute the SHA-256
+        for _ in range(50):
+            if (d.r.get("verify") or {}).get("state") == "info":
+                break
+            time.sleep(0.1)
+        self.assertEqual(d.r["verify"]["state"], "info")
+        self.assertTrue(d.r.get("sha256"))
+        with open(d.out, "ab") as f:
+            f.write(b"changed")
+        m.verify(d, "")
+        for _ in range(50):
+            if (d.r.get("verify") or {}).get("state") == "bad":
+                break
+            time.sleep(0.1)
+        self.assertEqual(d.r["verify"]["state"], "bad")
+
+
 class Actions(unittest.TestCase):
     def test_move_and_actions(self):
         m = manager()
