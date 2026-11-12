@@ -8,6 +8,9 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
 <p align="center">
   <a href="https://github.com/amahbadi/dlus/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/amahbadi/dlus?label=release&color=6d5efc"></a>
   <a href="https://github.com/amahbadi/dlus/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/amahbadi/dlus/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/amahbadi/dlus/actions/workflows/security.yml"><img alt="Security scan" src="https://github.com/amahbadi/dlus/actions/workflows/security.yml/badge.svg"></a>
+  <a href="https://github.com/amahbadi/dlus/actions/workflows/codeql.yml"><img alt="CodeQL" src="https://github.com/amahbadi/dlus/actions/workflows/codeql.yml/badge.svg"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/amahbadi/dlus"><img alt="OpenSSF Scorecard" src="https://api.scorecard.dev/projects/github.com/amahbadi/dlus/badge"></a>
   <a href="https://github.com/amahbadi/dlus/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/amahbadi/dlus/total?color=3f6bff"></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-black?logo=apple">
   <img alt="LG webOS" src="https://img.shields.io/badge/TV-LG%20webOS-a50034">
@@ -43,6 +46,7 @@ So I wrote a small script that downloads in many parts and checks every piece. T
 **⬇️ Downloads that finish**
 - Many connections per file; every piece is checked, so a resumed file is never corrupted
 - Survives Wi-Fi drops, sleep and restarts - it continues where it stopped
+- 🔐 Checksums: paste the publisher's, or dlus finds their checksum file itself; every file gets a SHA-256, a **Verify** button and the macOS quarantine flag
 - Queue, folders, speed limit, schedule, checksum check, live speed graph
 - Watch a film while it is still downloading
 
@@ -113,9 +117,14 @@ Other LG webOS TVs (2018 and newer) should work - the remote and the player use 
 
 ## 🔒 Privacy and security
 
-- The dlus window talks to a service on `127.0.0.1` that needs a key only your macOS account can read; other users and websites cannot control it
-- Nothing is opened on your network until you allow it; everything shared sits behind a secret code
-- No accounts, no telemetry; dlus talks to the internet only for your downloads and subtitle searches
+- 🛡️ **Every device must be allowed by you** - even with the right code, a TV or phone waits for your **Allow** in the app; everything is in an **activity log**
+- 🔐 **Downloads stay untouched** - checksums (yours or the publisher's), SHA-256 + Verify for every file, Gatekeeper quarantine, no https-to-http downgrade, disguised playlists refused
+- 🏠 **Nothing is opened on your network until you allow it**; private folders (`~/.ssh`, `~/Library`, system folders) can never be shared
+- 🔑 The dlus window talks to a service on `127.0.0.1` that needs a key only your macOS account can read; other users and websites cannot control it
+- 🧱 The VPN router's root helper sits in a root-only folder, accepts only checked commands, and lets **only your chosen devices** route through the Mac
+- 📺 The LG TV connection is pinned to the TV's certificate - no listening in
+- 🤖 Every change is scanned: Bandit, Semgrep, CodeQL, Gitleaks, ShellCheck, security tests; releases carry a signed build provenance
+- 🙈 No accounts, no telemetry; dlus talks to the internet only for your downloads and subtitle searches
 
 Details: [SECURITY.md](SECURITY.md) · VPN router: [docs/VPN-ROUTER.md](docs/VPN-ROUTER.md)
 

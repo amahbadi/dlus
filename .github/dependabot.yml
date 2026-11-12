@@ -1,0 +1,9 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions # keeps the pinned actions up to date (security fixes)
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

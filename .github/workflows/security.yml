@@ -1,0 +1,108 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1" # every Monday: new rules and advisories
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash # -eo pipefail: a failing scanner fails the step even when piped into tee
+
+jobs:
+  sast:
+    name: sast
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Install scanners
+        run: pip install --quiet bandit semgrep
+      - name: Bandit (Python security linter, medium and high)
+        run: bandit -q -ll dlus.py macos/*.py tests/*.py 2>&1 | tee bandit.txt
+      - name: Semgrep (Python, command injection, secrets, GitHub Actions)
+        if: always()
+        run: |
+          semgrep scan --metrics=off --error --severity ERROR \
+            --config p/python --config p/command-injection --config p/secrets --config p/github-actions \
+            dlus.py macos gateway tests .github 2>&1 | tee semgrep.txt
+      - name: Keep the findings for the pull request comment
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: findings-sast
+          path: "*.txt"
+          retention-days: 7
+
+  secrets:
+    name: secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Gitleaks (secrets in the code and the whole history)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: false
+
+  shell:
+    name: shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ShellCheck (root helper, installers)
+        run: shellcheck -S warning gateway/dlus-gw gateway/*.sh macos/*.sh macos/uninstall.command 2>&1 | tee shellcheck.txt
+      - name: Root helper rules
+        run: |
+          if grep -vE '^\s*#' gateway/dlus-gw | grep -q 'route-to'; then echo "pf route-to into utun panics macOS 26"; exit 1; fi
+          grep -q '^PATH=/usr/sbin:/usr/bin:/sbin:/bin' gateway/dlus-gw
+          grep -q 'DEST_DIR=/Library/PrivilegedHelperTools' gateway/install.sh
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: findings-shell
+          path: shellcheck.txt
+          retention-days: 7
+
+  report:
+    name: report
+    if: always() && github.event_name == 'pull_request'
+    needs: [sast, secrets, shell]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary for the pull request comment
+        env:
+          SAST: ${{ needs.sast.result }}
+          SECRETS: ${{ needs.secrets.result }}
+          SHELL_RESULT: ${{ needs.shell.result }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          mkdir report
+          echo "$PR" > report/pr.txt
+          printf 'sast=%s\nsecrets=%s\nshell=%s\n' "$SAST" "$SECRETS" "$SHELL_RESULT" > report/results.txt
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: findings-*
+          path: report
+          merge-multiple: true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-report
+          path: report
+          retention-days: 7

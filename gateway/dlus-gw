@@ -14,7 +14,7 @@
 set -u
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 ANCHOR="com.apple/dlus"
-VERSION=2
+VERSION=3
 STATE=/var/run/dlus-gw.state
 FULL=/var/run/dlus-gw.full
 RULES=/var/run/dlus-gw.rules
@@ -38,6 +38,8 @@ rules() { # lan cidr gw tun peer ks -> pf ruleset (translation first, then filte
 	echo "table <dlus_tunnel> persist"
 	echo "table <dlus_direct> persist"
 	echo "table <dlus_lan> const { $cidr }"
+	# where a device may still go without being on a list: the LAN itself (this Mac included), multicast / broadcast (Bonjour, SSDP)
+	echo "table <dlus_local> const { $cidr 224.0.0.0/4 255.255.255.255 169.254.0.0/16 }"
 	if [[ $tun != - ]]; then
 		# tunnelled devices: DNS goes through the tunnel as well (no leaks, no filtered ISP DNS)
 		echo "rdr on $lan inet proto { udp tcp } from <dlus_tunnel> to <dlus_lan> port 53 -> 1.1.1.1 port 53"
@@ -52,11 +54,15 @@ rules() { # lan cidr gw tun peer ks -> pf ruleset (translation first, then filte
 		[[ $tun == - ]] && echo "block drop in quick on $lan inet from <dlus_tunnel> to ! <dlus_lan>"
 	fi
 	echo "pass in quick on $lan inet from { <dlus_tunnel> <dlus_direct> } to ! <dlus_lan> keep state"
+	# a device that is NOT on a list must not use this Mac as a router (e.g. into the VPN's private networks)
+	# (only packets FROM the home network and TO outside it are affected: the Mac's own traffic and its replies are not)
+	echo "block drop in quick on $lan inet from <dlus_lan> to ! <dlus_local>"
 }
 
 full_off() {
 	if [ -f "$FULL" ]; then
 		t=$(cat "$FULL")
+		[[ $t =~ $IF_RE ]] || { rm -f "$FULL"; return; }
 		route -q -n delete -net 0.0.0.0/1 -interface "$t" >/dev/null 2>&1
 		route -q -n delete -net 128.0.0.0/1 -interface "$t" >/dev/null 2>&1
 		rm -f "$FULL"

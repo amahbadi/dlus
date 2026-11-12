@@ -5,6 +5,8 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 python3 -m py_compile "$SRC/dlus.py"
 python3 "$SRC/macos/check_names.py" "$SRC/dlus.py"   # a name used but defined nowhere stops the deploy
+python3 "$SRC/macos/check_js.py" "$SRC/dlus.py"
+(cd "$SRC" && python3 -m unittest discover -s tests >/dev/null 2>&1) || { echo "security tests failed: python3 -m unittest discover -s tests"; exit 1; }
 DMG=$(bash "$SRC/macos/build_dmg.sh" | tail -1)
 [ -f "$DMG" ] || { echo "build failed: no DMG"; exit 1; }
 MNT=$(mktemp -d)

@@ -57,10 +57,11 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+import zlib
 from xml.sax.saxutils import escape as xesc
 
 PORT = 8642
-VERSION = "7.22"
+VERSION = "7.23"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))  # ~/Desktop/dlus, or dlus.app/Contents/Resources when installed
 ICON_DIR = os.path.join(APP_DIR, "icons")
 APP_HEAD = ('<link rel=manifest href="/manifest.webmanifest"><link rel=icon type=image/png sizes=192x192 href="/icon-192.png">'
@@ -210,7 +211,8 @@ OV = 64 << 10  # check sample size
 STATE_DIR = os.environ.get("DLM_HOME") or os.path.expanduser("~/.dlus")
 if not os.environ.get("DLM_HOME") and not os.path.exists(STATE_DIR) and os.path.isdir(os.path.expanduser("~/.dlm")):
     os.rename(os.path.expanduser("~/.dlm"), STATE_DIR)  # migrate from the old name
-CURL = ["curl", "-sS", "-L", "--connect-timeout", "30", "--speed-limit", "10240", "--speed-time", "30"]
+CURL = ["/usr/bin/curl", "-q", "-sS", "-L", "--max-redirs", "10", "--proto", "=http,https,ftp,ftps", "--proto-redir", "=http,https,ftp,ftps",
+        "--connect-timeout", "30", "--speed-limit", "10240", "--speed-time", "30"]  # -q: ignore ~/.curlrc
 CATS = {
     "Video": "mp4 mkv avi mov webm m4v ts m2ts wmv flv mpg mpeg 3gp vob",
     "Audio": "mp3 flac m4a aac wav ogg opus wma alac aiff ape dsf",
@@ -297,8 +299,103 @@ def category(name):
 
 
 def safe_name(n):
-    n = re.sub(r'[/\\\0:*?"<>|]', "_", n).strip().lstrip(".")
+    n = re.sub(r"[\x00-\x1f\x7f\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", n)  # control and text-direction characters
+    n = re.sub(r'[/\\:*?"<>|]', "_", n).strip().lstrip(".").rstrip(". ")
     return n[:200] or "download"
+
+
+HASH_LEN = {32: "md5", 40: "sha1", 64: "sha256", 96: "sha384", 128: "sha512"}
+SENSITIVE_CATS = ("Disk images", "Programs", "Archives")  # look for the publisher's checksum file for these
+
+
+def parse_checksum(text, names=(), strict=False):
+    """(algo, hex) from what a user pastes ('sha256:ab..', 'SHA-256: ab..', 'ab..') or from a checksum file
+    (sha256sum 'hex  name', BSD 'SHA256 (name) = hex'). A line that names another file is ignored."""
+    names = {n for n in names if n}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        algo = file = None
+        mm = re.match(r"^(MD5|SHA-?1|SHA-?256|SHA-?384|SHA-?512)\s*\((.+)\)\s*=\s*([0-9A-Fa-f]+)$", line, re.I)
+        if mm:
+            algo, file, hx = mm.group(1).lower().replace("-", ""), mm.group(2), mm.group(3)
+        else:
+            mm = re.match(r"^(?:(MD5|SHA-?1|SHA-?256|SHA-?384|SHA-?512)\s*[:=]?\s*)?([0-9A-Fa-f]{32,128})(?:\s+\*?(.+))?$", line, re.I)
+            if not mm:
+                if strict:
+                    continue
+                mm2 = re.search(r"\b([0-9A-Fa-f]{32,128})\b", line)
+                if not mm2:
+                    continue
+                hx = mm2.group(1)
+            else:
+                algo, hx, file = (mm.group(1) or "").lower().replace("-", "") or None, mm.group(2), mm.group(3)
+        a = HASH_LEN.get(len(hx))
+        if not a or (algo and algo != a):
+            continue
+        if file and names and os.path.basename(file.strip()) not in names:
+            continue
+        if strict and not file and names and len([l for l in text.splitlines() if l.strip()]) > 1:
+            continue  # a list of hashes without names: cannot tell which one is ours
+        return a, hx.lower()
+    return None
+
+
+def fetch_small(url, limit=1 << 20, timeout=15):
+    """a small text file over http(s) only (checksum files)"""
+    if not re.match(r"^https?://", url):
+        raise ValueError("not a http(s) link")
+    # security scan: scheme checked
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "dlus/" + VERSION}), timeout=timeout) as f:  # nosec B310
+        if f.geturl().startswith("http://") and url.startswith("https://"):
+            raise ValueError("redirected from https to http")
+        return f.read(limit).decode("utf-8", "ignore")
+
+
+def published_checksum(url, names):
+    """the publisher's checksum file next to the download (file.iso.sha256, SHA256SUMS ...) -> (algo, hex, source) or None"""
+    u = urllib.parse.urlsplit(url)
+    if u.scheme not in ("http", "https") or u.query:  # signed / one-time links: nothing to look next to
+        return None
+    base = url.rsplit("/", 1)[0] + "/"
+    for c in [url + e for e in (".sha256", ".sha256sum", ".sha512", ".sha1", ".md5")] + [base + f for f in ("SHA256SUMS", "sha256sums.txt", "SHA512SUMS")]:
+        try:
+            txt = fetch_small(c, timeout=8)
+        except (OSError, ValueError):
+            continue
+        if "<html" in txt[:2000].lower():  # a "not found" web page
+            continue
+        got = parse_checksum(txt, names, strict=True)
+        if got:
+            return got + (c,)
+    return None
+
+
+def quarantine(path):
+    """mark a downloaded file the way Safari does, so macOS Gatekeeper checks apps and installers that come from it"""
+    try:
+        subprocess.run(["/usr/bin/xattr", "-w", "com.apple.quarantine", "0083;%08x;dlus;%s" % (int(time.time()), str(uuid.uuid4()).upper()), path],
+                       capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def hidden_inside(base, path):
+    """True if path goes through a hidden file or folder below base (.ssh, .git, .dlus ...): never shown on the network"""
+    rel = os.path.relpath(path, base)
+    return rel != "." and any(p.startswith(".") for p in rel.split(os.sep))
+
+
+def share_ok(folder):
+    """a folder that may be shared on the network: not a system folder, not one that holds dlus' keys or your private keys"""
+    home = os.path.realpath(os.path.expanduser("~"))
+    private = [os.path.realpath(STATE_DIR), os.path.join(home, ".ssh"), os.path.join(home, ".gnupg"), os.path.join(home, "Library")]
+    for p in private:  # sharing the folder itself, or one that contains it
+        if folder == p or p.startswith(folder.rstrip(os.sep) + os.sep) or folder.startswith(p + os.sep):
+            return False
+    system = ("/System", "/Library", "/private", "/etc", "/usr", "/bin", "/sbin", "/var", "/Applications", "/Users")
+    return not any(folder == x or folder.startswith(x + os.sep) for x in system if x != "/Users") and folder != "/Users"
 
 
 def name_from_url(u):
@@ -501,7 +598,8 @@ def install_font(name):
         if fsize(dst) > 1000:
             continue
         try:
-            data = urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "dlus/" + VERSION}), timeout=30).read(4 << 20)
+            # security scan: fixed https font URL
+            data = urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "dlus/" + VERSION}), timeout=30).read(4 << 20)  # nosec B310
         except OSError as e:
             raise ValueError("download failed: %s" % e)
         if not data.startswith(FONT_MAGIC):
@@ -537,7 +635,8 @@ def fetch_fonts():
         dst = os.path.join(fonts_dir(), url.rsplit("/", 1)[1])
         if fsize(dst) < 1000:
             try:
-                data = urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "dlus/" + VERSION}), timeout=30).read(4 << 20)
+                # security scan: fixed https font URL
+                data = urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "dlus/" + VERSION}), timeout=30).read(4 << 20)  # nosec B310
                 if data[:4] in (b"\x00\x01\x00\x00", b"OTTO", b"true"):
                     with open(dst + ".tmp", "wb") as o:
                         o.write(data)
@@ -557,7 +656,8 @@ def fetch_fonts():
                 continue
             try:
                 req = urllib.request.Request(base + f, headers={"User-Agent": "dlus/" + VERSION})
-                data = urllib.request.urlopen(req, timeout=30).read(2 << 20)
+                # security scan: fixed https font URL
+                data = urllib.request.urlopen(req, timeout=30).read(2 << 20)  # nosec B310
                 if data[:4] == b"wOF2":
                     with open(dst + ".tmp", "wb") as o:
                         o.write(data)
@@ -588,7 +688,7 @@ def fonts_js(m):
 def styled_ass(vtt_path, style, delay):
     """subtitle as ASS with the chosen font, colour, size, outline/box and position (for the TV's own player)"""
     font = style.get("font") if style.get("font") in FONTS else "Vazirmatn"
-    key = hashlib.sha1(json.dumps([vtt_path, os.path.getmtime(vtt_path), style, delay], sort_keys=True).encode()).hexdigest()[:12]
+    key = hashlib.sha1(json.dumps([vtt_path, os.path.getmtime(vtt_path), style, delay], sort_keys=True).encode(), usedforsecurity=False).hexdigest()[:12]
     out = os.path.join(os.path.dirname(vtt_path), "styled-%s.ass" % key)
     if os.path.exists(out):
         return out, font
@@ -777,7 +877,8 @@ class Net:
     def pubip(self):
         for u in ("https://api.ipify.org", "https://icanhazip.com", "https://ifconfig.me/ip"):
             try:
-                ip = urllib.request.urlopen(u, timeout=6).read().decode().strip()
+                # security scan: fixed https URLs
+                ip = urllib.request.urlopen(u, timeout=6).read().decode().strip()  # nosec B310
                 ipaddress.ip_address(ip)
                 self.info["public_ip"] = ip
                 self.info["public_ip_t"] = time.time()
@@ -1023,7 +1124,8 @@ class ProxyServer:
         for l in sh(["ifconfig"]).splitlines():
             if l.strip().startswith("inet "):
                 own.add(l.split()[1])
-        self.own = own | {"127.0.0.1", "0.0.0.0", "localhost", "::1"}
+        # security scan: list of this Mac's own addresses, not a bind
+        self.own = own | {"127.0.0.1", "0.0.0.0", "localhost", "::1"}  # nosec B104
         srv = self
 
         class H(socketserver.BaseRequestHandler):
@@ -1033,12 +1135,32 @@ class ProxyServer:
         class S(socketserver.ThreadingTCPServer):
             daemon_threads = True
             allow_reuse_address = True
-        self.srv = S(("0.0.0.0", int(m.settings["proxy_port"])), H)
+        # security scan: list of this Mac's own addresses, not a bind
+        self.srv = S(("0.0.0.0", int(m.settings["proxy_port"])), H)  # nosec B104
         threading.Thread(target=self.srv.serve_forever, daemon=True, name="proxy").start()
 
     def stop(self):
         self.srv.shutdown()
         self.srv.server_close()
+
+    def own_ips(self):
+        """this Mac's addresses, refreshed every 30 s (they change with the network)"""
+        if time.time() - getattr(self, "own_t", 0) > 30:
+            own = set()
+            for l in sh(["ifconfig"]).splitlines():
+                if l.strip().startswith(("inet ", "inet6 ")):
+                    own.add(l.split()[1].split("%")[0])
+            # security scan: proxy for the home network, only when the user turns it on; private addresses only
+            self.own, self.own_t = own | {"127.0.0.1", "0.0.0.0", "localhost", "::1"}, time.time()  # nosec B104
+        return self.own
+
+    @staticmethod
+    def local_dest(a):
+        try:
+            ip = ipaddress.ip_address(a)
+        except ValueError:
+            return False
+        return ip.is_loopback or ip.is_unspecified or ip.is_multicast
 
     def client(self, ip):
         with self.lock:
@@ -1079,9 +1201,12 @@ class ProxyServer:
         st = self.m.settings
         if st.get("proxy_auth"):
             want = "Basic " + base64.b64encode(("%s:%s" % (st["proxy_user"], st["proxy_pass"])).encode()).decode()
-            if hdrs.get("proxy-authorization", "") != want:
+            if not secrets.compare_digest(hdrs.get("proxy-authorization", "").encode(), want.encode()):
                 conn.sendall(b'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="dlus"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
                 return
+        if not self.m.lan_access(ip, hdrs.get("user-agent", ""), "used the web proxy"):
+            conn.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nWaiting for approval in dlus on the Mac.")
+            return
         if method == "CONNECT":
             host, _, port = target.rpartition(":")
             port = int(port or 443)
@@ -1092,16 +1217,21 @@ class ProxyServer:
                 return
             host, port = u.hostname, u.port or 80
         host = host.strip("[]")
+        if not (0 < port < 65536) or not re.match(r"^[\w.\-:]{1,253}$", host):
+            conn.sendall(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            return
+        upstream = self.m.upstream()
         try:  # never let other devices reach this Mac itself (control panel, other local services)
             dest = socket.gethostbyname(host)
         except OSError:
             dest = host
-        if host.lower() in self.own or dest in self.own or dest.startswith("127."):
+        if host.lower() in self.own_ips() or dest in self.own_ips() or self.local_dest(dest):
             conn.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
             return
         c = self.client(ip)
         try:
-            up = open_upstream(self.m.upstream(), host, port)
+            # direct: connect to the address that was checked, so a second DNS answer cannot point at this Mac (DNS rebinding)
+            up = open_upstream(upstream, dest if upstream == "direct" else host, port)
         except OSError as e:
             conn.sendall(("HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\ndlus proxy: %s" % e).encode())
             return
@@ -1227,7 +1357,7 @@ def files_page(m, rel):
             body += "<h2>Download folder</h2><p><a href='/%s/files/dir/'>&#128193; %s</a></p>" % (tok, xesc(base.replace(os.path.expanduser("~"), "~")))
         return title, body
     path = os.path.realpath(os.path.join(base, urllib.parse.unquote(rel)))
-    if not (path == base or path.startswith(base + os.sep)) or not os.path.exists(path):
+    if not (path == base or path.startswith(base + os.sep)) or not os.path.exists(path) or hidden_inside(base, path):
         return None, None
     if os.path.isfile(path):
         return "file", path
@@ -1417,11 +1547,16 @@ class TVError(ValueError):
         return msg
 
 
+class TVCertChanged(OSError):
+    pass
+
+
 class WebOSTV:
     """minimal WebSocket client for webOS (ws :3000 / wss :3001). Pairing = one 'Allow' on the TV, then a stored key."""
 
-    def __init__(self, ip, key=""):
+    def __init__(self, ip, key="", pin=""):
         self.ip, self.key, self.n = ip, key or "", 0
+        self.pin, self.seen_pin = pin or "", ""  # "tls:<sha256 of the TV's certificate>" or "plain" (old TVs), fixed at pairing
         self.sock, self.rest, self.btn = None, b"", None
         self.lock = threading.Lock()
 
@@ -1430,8 +1565,16 @@ class WebOSTV:
         if tls:
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE  # the TV uses a self-signed certificate
+            ctx.verify_mode = ssl.CERT_NONE  # the TV uses a self-signed certificate: pinned below instead (trust on first use)
             s = ctx.wrap_socket(s, server_hostname=host)
+            fp = hashlib.sha256(s.getpeercert(binary_form=True) or b"").hexdigest()
+            if self.pin.startswith("tls:") and not secrets.compare_digest(fp, self.pin[4:]):
+                s.close()
+                raise TVCertChanged("the TV's security certificate is not the one it had when you paired it - someone on the network may be "
+                                    "listening in. If you reset or updated the TV, press Forget on the TV page and pair it again.")
+            self.seen_pin = "tls:" + fp
+        else:
+            self.seen_pin = self.seen_pin or "plain"
         k = base64.b64encode(os.urandom(16)).decode()
         s.sendall(("GET %s HTTP/1.1\r\nHost: %s:%d\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\n"
                    "Sec-WebSocket-Version: 13\r\n\r\n" % (path, host, port, k)).encode())
@@ -1490,10 +1633,13 @@ class WebOSTV:
 
     def connect(self, wait=60):
         last = None
-        for port, tls in ((3001, True), (3000, False)):
+        # a TV paired over the encrypted port is never contacted unencrypted again (nobody can force a downgrade)
+        for port, tls in ((3001, True),) if self.pin.startswith("tls:") else ((3001, True), (3000, False)):
             try:
                 self.sock, self.rest = self._ws(self.ip, port, tls)
                 break
+            except TVCertChanged:
+                raise
             except (OSError, ssl.SSLError) as e:
                 last = e
         else:
@@ -1533,6 +1679,8 @@ class WebOSTV:
         if not self.btn:
             path = self.request("ssap://com.webos.service.networkinput/getPointerInputSocket").get("socketPath", "")
             u = urllib.parse.urlsplit(path)
+            if u.hostname != self.ip:
+                raise OSError("the TV gave a pointer address on another device")
             self.btn, _ = self._ws(u.hostname, u.port or (3001 if u.scheme == "wss" else 3000), u.scheme == "wss", u.path)
         try:
             self._frame(("type:button\nname:%s\n\n" % name).encode(), 1, self.btn)
@@ -1549,7 +1697,14 @@ class WebOSTV:
 
 
 # ---------------------------------------------------------------- VPN router (devices use this Mac as their gateway)
-GW_HELPER = os.environ.get("DLUS_GW_HELPER") or "/usr/local/libexec/dlus-gw"
+GW_PATH = "/Library/PrivilegedHelperTools/dlus-gw"  # root-only folder (helper v3+)
+GW_OLD_PATH = "/usr/local/libexec/dlus-gw"  # helper v1-v2: /usr/local can be user-writable (Homebrew on Intel Macs)
+
+
+def gw_helper():
+    if os.environ.get("DLUS_GW_HELPER"):
+        return os.environ["DLUS_GW_HELPER"]
+    return GW_OLD_PATH if not os.path.exists(GW_PATH) and os.path.exists(GW_OLD_PATH) else GW_PATH
 
 
 class Gateway:
@@ -1570,7 +1725,7 @@ class Gateway:
         self.last_result = None  # last install / update / route change, shown under its button
 
     def call(self, *args, timeout=25):
-        cmd = [GW_HELPER] + list(args) if os.environ.get("DLUS_GW_HELPER") else ["sudo", "-n", GW_HELPER] + list(args)
+        cmd = [gw_helper()] + list(args) if os.environ.get("DLUS_GW_HELPER") else ["/usr/bin/sudo", "-n", gw_helper()] + list(args)
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         except (OSError, subprocess.SubprocessError) as e:
@@ -1621,7 +1776,7 @@ class Gateway:
         mm = re.search(r"^VERSION=(\d+)", rd(self.BUNDLED_GW), re.M)
         want = int(mm.group(1)) if mm else 1
         have = 0
-        if os.path.exists(GW_HELPER):
+        if os.path.exists(gw_helper()):
             ok, out = self.call("version", timeout=8)
             mm = re.search(r"dlus-gw (\d+)", out) if ok else None
             # helper v1 had no "version" command: it answers with its help text instead
@@ -1680,7 +1835,7 @@ class Gateway:
     def sync(self):
         st, S = self.st, self.m.settings
         if time.time() - self.t_check > 60 or not st["installed"]:
-            st["installed"] = os.path.exists(GW_HELPER) and self.call("status", timeout=10)[0]
+            st["installed"] = os.path.exists(gw_helper()) and self.call("status", timeout=10)[0]
             self.t_check = time.time()
         lan = self.lan()
         st["lan"] = lan or {}
@@ -1826,7 +1981,7 @@ class Gateway:
         return dict(self.st, on=bool(S.get("gw_on")), default=S.get("gw_default") or "direct", killswitch=bool(S.get("gw_killswitch", True)),
                     tunnels=self.tunnels(), split=self.split_tunnels(), via=info.get("route_iface") or "", full=self.full,
                     vpn_apps=info.get("apps") or [], vpn_profiles=[v for v in info.get("vpns") or [] if v["status"] == "Connected"],
-                    devices=devs, helper=GW_HELPER, helper_have=self.vers[0], helper_want=self.vers[1],
+                    devices=devs, helper=gw_helper(), helper_have=self.vers[0], helper_want=self.vers[1],
                     result=self.last_result if self.last_result and time.time() - self.last_result["at"] < 900 else None,
                     install="sudo bash " + shlex.quote(os.path.join(APP_DIR, "gateway", "install.sh")))
 
@@ -1915,6 +2070,8 @@ class Sessions:
                                        "samples": collections.deque(maxlen=12), "rates": collections.deque(maxlen=120)}
                 self.host_info(ip)
                 d.log("%s (%s) started watching: %s" % (name, ip, variant))
+                if ip not in ("127.0.0.1", "::1"):
+                    self.m.audit("started watching %s (%s)" % (d.r["name"], variant), ip, name)
             sx["reqs"] += 1
             sx["active"] += 1
             sx["last"] = now
@@ -2091,7 +2248,9 @@ class DL:
         """run curl; returns (stdout, killed)"""
         if self.stop_ev.is_set():
             return "", True
-        p = subprocess.Popen(CURL + args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        # a https link may only redirect to https: no silent downgrade to plain http (browsers block those downloads too)
+        noweak = ["--proto-redir", "=https"] if self.r.get("url", "").startswith("https://") else []
+        p = subprocess.Popen(CURL + noweak + args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         with self.lock:
             self.procs.add(p)
             if key is not None:
@@ -2156,6 +2315,31 @@ class DL:
         return code, total, length, etag, fname
 
     # ---------------------------------------------------------- streaming
+    def media_ok(self):
+        """False for a "video" that is really a text playlist (HLS / ffconcat / DASH): such a file can make ffmpeg or a
+        player read other files on this Mac or addresses on your network (known attack) - dlus never plays it"""
+        if getattr(self, "_media_ok", None) is not None:
+            return self._media_ok
+        if category(self.r["name"]) not in ("Video", "Audio"):
+            return True
+        a = self.avail(0)
+        if not a:
+            return True
+        try:
+            with open(a[0], "rb") as f:
+                f.seek(a[1])
+                head = f.read(4096)
+        except OSError:
+            return True
+        h = head.lstrip(b"\xef\xbb\xbf \t\r\n").lower()
+        bad = h.startswith((b"#extm3u", b"ffconcat", b"#ext-x-")) or (h.startswith(b"<") and b"<mpd" in h)
+        if len(head) >= 4096 or bad:
+            self._media_ok = not bad
+            if bad:
+                self.log("ERROR: this file is a playlist, not a video - dlus will not play or convert it")
+                self.m.audit("refused to play %s: a playlist disguised as a video" % self.r["name"], level="warn")
+        return not bad
+
     def avail(self, off):
         """(path, offset in path, bytes available there) for byte `off`, or None"""
         r = self.r
@@ -2589,34 +2773,63 @@ class DL:
         os.replace(asm, self.out)
         self.finish()
 
+    def hash_file(self, algos, label):
+        """hex digests of the finished file, one pass; None when stopped"""
+        hs = {a: hashlib.new(a) for a in dict.fromkeys(algos)}
+        with open(self.out, "rb") as f:
+            n = 0
+            while True:
+                b = f.read(8 << 20)
+                if not b:
+                    break
+                for h in hs.values():
+                    h.update(b)
+                n += len(b)
+                if self.stop_ev.is_set():
+                    return None
+                if n % (1 << 30) < (8 << 20):
+                    self.r["msg"] = "%s: %d%%" % (label, n * 100 // max(1, self.r.get("size") or 1))
+        return {a: h.hexdigest() for a, h in hs.items()}
+
     def finish(self):
         r = self.r
-        cs = (r.get("checksum") or "").strip().lower()
-        if cs:
-            if ":" in cs:
-                algo, want = cs.split(":", 1)
-            else:
-                want = cs
-                algo = {32: "md5", 40: "sha1", 64: "sha256", 128: "sha512"}.get(len(cs), "sha256")
-            self.status("verifying", "verifying %s of the whole file" % algo)
-            h = hashlib.new(algo)
-            with open(self.out, "rb") as f:
-                n = 0
-                while True:
-                    b = f.read(8 << 20)
-                    if not b:
-                        break
-                    h.update(b)
-                    n += len(b)
-                    if self.stop_ev.is_set():
-                        return
-                    if n % (1 << 30) < (8 << 20):
-                        r["msg"] = "verifying %s: %d%%" % (algo, n * 100 // max(1, r["size"]))
-            ok = h.hexdigest() == want.strip()
+        names = (r["name"], name_from_url(r["url"]))
+        want = None
+        cs = (r.get("checksum") or "").strip()
+        if re.match(r"^https?://", cs):  # a link to the publisher's checksum file
+            try:
+                want = parse_checksum(fetch_small(cs), names, strict=True)
+            except (OSError, ValueError) as e:
+                return self.fail("could not read the checksum file: %s" % e)
+            if not want:
+                return self.fail("the checksum file has no checksum for %s" % r["name"])
+            r["checksum_src"] = cs
+        elif cs:
+            want = parse_checksum(cs, names)
+        elif category(r["name"]) in SENSITIVE_CATS and not r.get("local"):
+            self.status("verifying", "looking for the publisher's checksum")
+            got = published_checksum(r["url"], names)
+            if got:
+                want = got[:2]
+                r["checksum"], r["checksum_src"] = "%s:%s" % want, got[2]
+                self.log("found the publisher's checksum: " + got[2])
+        algos = ["sha256"] + ([want[0]] if want else [])
+        self.status("verifying", "verifying %s of the whole file" % (want[0] if want else "sha256"))
+        got = self.hash_file(algos, "verifying " + algos[-1])
+        if got is None:
+            return
+        r["sha256"] = got["sha256"]
+        if want:
+            ok = secrets.compare_digest(got[want[0]], want[1])
             r["checksum_ok"] = ok
-            self.log("checksum %s %s" % (algo, "OK - file is exactly right" if ok else "FAILED: got " + h.hexdigest()))
+            self.log("checksum %s %s" % (want[0], "OK - file is exactly right" if ok else "FAILED: got " + got[want[0]]))
             if not ok:
-                return self.fail("checksum mismatch - the file is not the expected one")
+                bad = self.out + ".checksum-failed"
+                os.replace(self.out, bad)
+                quarantine(bad)
+                shutil.rmtree(self.parts, ignore_errors=True)  # "resume" downloads it again from scratch
+                return self.fail("checksum mismatch - this is NOT the expected file. Set aside as %s - do not open it" % os.path.basename(bad))
+        quarantine(self.out)  # Gatekeeper checks apps / installers from it, like a browser download
         r["status"] = "done"
         r["msg"] = ""
         r["force"] = False
@@ -2674,6 +2887,16 @@ class Manager:
         self.sync_running = set()
         self.casting = None
         self.sessions = Sessions(self)
+        self.audit_log = collections.deque(load_json(os.path.join(STATE_DIR, "audit.json"), [])[-2000:], maxlen=2000)
+        self.audit_dirty = False
+        self.lan_pending = {}
+        self.lan_denied = {}
+        self.mac_cache = {}
+        self.settings.setdefault("lan_allowed", {})
+        for t in self.settings.get("tvs") or []:  # TVs you paired (accepted on the TV itself) stay allowed after the update
+            if t.get("id") in (self.settings.get("tv_keys") or {}) and t.get("ip") and t["ip"] not in self.settings["lan_allowed"]:
+                self.settings["lan_allowed"][t["ip"]] = {"name": t.get("name") or t["ip"], "mac": t.get("mac", ""), "at": time.time(),
+                                                         "why": "paired TV", "last": time.time()}
         self.settings["sub_style"] = dict(self.DEFAULTS["sub_style"], **(self.settings.get("sub_style") or {}))
         self.dlna_update, self.dlna_key = 1, None
         self.stats = load_json(os.path.join(STATE_DIR, "stats.json"), {"days": {}, "total": 0})
@@ -2698,6 +2921,100 @@ class Manager:
         if self.settings.get("notify", True) and sys.platform == "darwin":
             subprocess.Popen(["osascript", "-e", "display notification %s with title \"dlus\"" % json.dumps(msg, ensure_ascii=False)],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # ------------------------------------------------------ who may use dlus from the network + the audit log
+    def audit(self, event, ip="", device="", level="info"):
+        """one line in the access / activity log (Devices & viewers -> Activity log), kept in ~/.dlus/audit.json"""
+        if ip and not device:
+            a = (self.settings.get("lan_allowed") or {}).get(ip) or self.lan_pending.get(ip) or {}
+            device = a.get("name") or (self.sessions.hosts.get(ip) or {}).get("host", "")
+        self.audit_log.append({"t": time.time(), "ip": ip, "device": device, "event": event[:300], "level": level})
+        self.audit_dirty = True
+        log.info("audit %s %s: %s", ip or "-", device or "", event)
+
+    def save_audit(self):
+        if self.audit_dirty:
+            self.audit_dirty = False
+            wr_sync(os.path.join(STATE_DIR, "audit.json"), json.dumps(list(self.audit_log)))
+
+    def mac_of(self, ip):
+        c = self.mac_cache.get(ip)
+        if c and time.time() - c[1] < 60:
+            return c[0]
+        mm = re.search(r" at ([0-9a-f:]{11,17}) ", sh(["arp", "-n", ip], 3))
+        mac = ":".join(x.zfill(2) for x in mm.group(1).split(":")) if mm else ""
+        self.mac_cache[ip] = (mac, time.time())
+        return mac
+
+    def lan_allow(self, ip, why, name=""):
+        """allow a device (the user pressed Allow, or sent a film to that TV from this Mac)"""
+        if ip in ("127.0.0.1", "::1"):
+            return
+        p = self.lan_pending.pop(ip, None) or {}
+        al = self.settings.setdefault("lan_allowed", {})
+        if ip not in al:
+            al[ip] = {"name": name or p.get("name") or (self.sessions.hosts.get(ip) or {}).get("host") or ip, "mac": self.mac_of(ip),
+                      "at": time.time(), "why": why, "last": time.time()}
+            self.audit("allowed: " + why, ip, al[ip]["name"])
+            self.save()
+        self.lan_denied.pop(ip, None)
+
+    def lan_access(self, ip, ua, what):
+        """may this device use the shared library / streams / proxy? Unknown devices wait until the user allows them in the app."""
+        if ip in ("127.0.0.1", "::1"):
+            return True
+        al = self.settings.setdefault("lan_allowed", {})
+        a = al.get(ip)
+        if a:
+            mac = self.mac_of(ip)
+            if a.get("mac") and mac and mac != a["mac"]:  # another device took over this address
+                self.audit("a different device (%s) now uses the address of %s - asking again" % (mac, a.get("name", ip)), ip, level="warn")
+                al.pop(ip, None)
+                self.save()
+            else:
+                if not a.get("mac") and mac:
+                    a["mac"] = mac
+                if time.time() - a.get("last", 0) > 600:
+                    self.audit(what, ip, a.get("name", ""))
+                a["last"] = time.time()
+                return True
+        if time.time() < self.lan_denied.get(ip, 0):
+            return False
+        name, kind = device_name(ua, ip)
+        host = (self.sessions.host_info(ip) or {}).get("host", "")
+        if ip not in self.lan_pending:
+            self.lan_pending[ip] = {"ip": ip, "name": name if name != ip else host or ip, "kind": kind, "host": host, "mac": self.mac_of(ip),
+                                    "ua": ua[:180], "what": what, "at": time.time()}
+            self.audit("asks for access (%s)" % what, ip, name, "warn")
+            self.notify("%s (%s) asks to use dlus - open dlus to allow or deny" % (name, ip))
+        self.lan_pending[ip]["last"] = time.time()
+        return False
+
+    def lan_decide(self, b):
+        ip = str(b.get("ip") or "")
+        if b.get("act") == "remove":
+            a = (self.settings.get("lan_allowed") or {}).pop(ip, None)
+            if a:
+                self.audit("access removed by you", ip, a.get("name", ""), "warn")
+                self.save()
+            return {"ok": True}
+        if ip not in self.lan_pending:
+            raise ValueError("no such request")
+        if b.get("act") == "allow":
+            self.lan_allow(ip, "you allowed it in the app")
+        else:
+            p = self.lan_pending.pop(ip)
+            self.lan_denied[ip] = time.time() + 3600
+            self.audit("denied by you (blocked for 1 hour)", ip, p.get("name", ""), "warn")
+        return {"ok": True}
+
+    def access_state(self):
+        now = time.time()
+        for ip in [ip for ip, p in self.lan_pending.items() if now - p.get("last", p["at"]) > 1800]:
+            self.lan_pending.pop(ip, None)
+        return {"pending": sorted(self.lan_pending.values(), key=lambda p: p["at"]),
+                "allowed": [dict(v, ip=k) for k, v in sorted((self.settings.get("lan_allowed") or {}).items(), key=lambda kv: -kv[1].get("last", 0))],
+                "log": list(self.audit_log)[-300:][::-1]}
 
     def count_proxy(self, n):
         k = time.strftime("%Y-%m-%d")
@@ -2765,6 +3082,9 @@ class Manager:
             dup = next((d for d in self.dls.values() if d.r["url"] == url), None)
         if dup:
             raise ValueError("already in the list: " + dup.r["name"])
+        checksum = (checksum or "").strip()
+        if checksum and not re.match(r"^https?://\S+$", checksum) and not parse_checksum(checksum):
+            raise ValueError("checksum not understood - paste an MD5 / SHA-1 / SHA-256 / SHA-512 value or a link to the checksum file")
         name = name_from_url(url)
         r = {"id": uuid.uuid4().hex[:10], "url": url, "name": name, "dir": self.folder(name, folder),
              "conns": max(1, min(32, int(conns or self.settings["conns"]))), "status": "queued" if start else "paused",
@@ -2773,6 +3093,7 @@ class Manager:
         with self.lock:
             self.dls[r["id"]] = DL(self, r)
         self.save()
+        self.audit("download added: %s" % url[:200])
         return r["id"]
 
     def move(self, did, where):
@@ -2783,6 +3104,53 @@ class Manager:
             pos = {"top": 0, "bottom": len(ids), "up": max(0, k - 1), "down": min(len(ids), k + 1)}[where]
             ids.insert(pos, did)
             self.dls = collections.OrderedDict((i, self.dls[i]) for i in ids)
+
+    def verify(self, d, cs):
+        """check a finished file again: against a checksum you paste (or a checksum-file link),
+        or against its own SHA-256 from the end of the download (was it changed since?)"""
+        r = d.r
+        names = (r["name"], name_from_url(r["url"]))
+        if re.match(r"^https?://", cs):
+            want = parse_checksum(fetch_small(cs), names, strict=True)
+            if not want:
+                raise ValueError("that checksum file has no checksum for " + r["name"])
+        elif cs:
+            want = parse_checksum(cs, names)
+            if not want:
+                raise ValueError("checksum not understood - paste an MD5 / SHA-1 / SHA-256 / SHA-512 value or a link to the checksum file")
+        else:
+            want = ("sha256", r["sha256"]) if r.get("sha256") else None
+        if getattr(d, "verifying", False):
+            raise ValueError("already checking this file")
+
+        def run():
+            d.verifying = True
+            r["verify"] = {"state": "running", "at": time.time()}
+            try:
+                got = d.hash_file(["sha256"] + ([want[0]] if want else []), "checking")
+                r["msg"] = ""
+                if got is None:
+                    r["verify"] = None
+                    return
+                if not r.get("sha256"):
+                    r["sha256"] = got["sha256"]
+                if not want:
+                    r["verify"] = {"state": "info", "at": time.time(), "text": "SHA-256 computed - compare it with the one the publisher shows"}
+                    return
+                ok = secrets.compare_digest(got[want[0]], want[1])
+                what = "the checksum you gave" if cs else "the file as it was downloaded"
+                r["verify"] = {"state": "ok" if ok else "bad", "at": time.time(), "algo": want[0],
+                               "text": ("matches %s" if ok else "does NOT match %s - the file is different") % what}
+                if cs:
+                    r["checksum"], r["checksum_ok"] = "%s:%s" % want, ok
+                    if cs.startswith("http"):
+                        r["checksum_src"] = cs
+                d.log("check %s: %s" % (want[0], r["verify"]["text"]))
+            finally:
+                d.verifying = False
+                self.dirty = True
+        threading.Thread(target=run, daemon=True, name="verify").start()
+        return {"ok": True, "started": True}
 
     def action(self, did, act, body):
         with self.lock:
@@ -2807,6 +3175,8 @@ class Manager:
                     if not d.alive:
                         d.start()
                 d.log("resumed" if act == "resume" else "started now (ignores queue limit and schedule)")
+            elif act == "verify" and r["status"] == "done" and os.path.isfile(d.out):
+                res = self.verify(d, str(body.get("checksum") or "").strip())
             elif act == "delete":
                 d.stop()
                 if d.thread:
@@ -2933,15 +3303,27 @@ class Manager:
 
     def subs_add(self, d, name, raw, label=None):
         files = []
+        lim = 30 << 20  # a subtitle is never this big: refuse "zip bombs"
         if raw[:2] == b"\x1f\x8b":
             try:
-                raw = gzip.decompress(raw)
-            except OSError:
+                dz = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                raw = dz.decompress(raw, lim + 1)
+            except zlib.error:
                 raise ValueError("broken .gz subtitle")
+            if len(raw) > lim:
+                raise ValueError("the subtitle archive unpacks to more than 30 MB - refused")
         if raw[:2] == b"PK":
             with zipfile.ZipFile(io.BytesIO(raw)) as z:
-                files = [(os.path.basename(n), z.read(n)) for n in z.namelist()
-                         if n.lower().endswith(SUB_EXT) and "__MACOSX" not in n][:10]
+                infos = [i for i in z.infolist() if i.filename.lower().endswith(SUB_EXT) and "__MACOSX" not in i.filename][:10]
+                if sum(i.file_size for i in infos) > lim:
+                    raise ValueError("the subtitle archive unpacks to more than 30 MB - refused")
+                files = []
+                for i in infos:
+                    with z.open(i) as zf:
+                        data = zf.read(lim + 1)
+                    if len(data) > lim:
+                        raise ValueError("the subtitle archive unpacks to more than 30 MB - refused")
+                    files.append((os.path.basename(i.filename), data))
         else:
             files = [(name or "subtitle.srt", raw)]
         if not files:
@@ -2951,7 +3333,7 @@ class Manager:
         for fn, data in files:
             text = decode_sub(data)
             # same subtitle in another encoding = same timing lines
-            key = hashlib.sha1("".join(re.findall(r"\d+:\d\d:\d\d[.,]\d+ --> \d+:\d\d:\d\d[.,]\d+", text)).encode()).hexdigest()
+            key = hashlib.sha1("".join(re.findall(r"\d+:\d\d:\d\d[.,]\d+ --> \d+:\d\d:\d\d[.,]\d+", text)).encode(), usedforsecurity=False).hexdigest()
             if key in seen_txt:  # same subtitle in another encoding (ANSI + UTF-8 copies)
                 continue
             seen_txt.add(key)
@@ -2959,11 +3341,11 @@ class Manager:
             n = vtt.count("-->")
             if not n:
                 continue
-            tkey = hashlib.sha1("".join(re.findall(r"\d+:\d\d:\d\d\.\d+ --> \d+:\d\d:\d\d\.\d+", vtt)).encode()).hexdigest()
+            tkey = hashlib.sha1("".join(re.findall(r"\d+:\d\d:\d\d\.\d+ --> \d+:\d\d:\d\d\.\d+", vtt)).encode(), usedforsecurity=False).hexdigest()
             same = None
             for old in d.r.get("subs") or []:
                 if not old.get("tkey") and os.path.exists(old.get("file", "")):
-                    old["tkey"] = hashlib.sha1("".join(re.findall(r"\d+:\d\d:\d\d\.\d+ --> \d+:\d\d:\d\d\.\d+", rd(old["file"]))).encode()).hexdigest()
+                    old["tkey"] = hashlib.sha1("".join(re.findall(r"\d+:\d\d:\d\d\.\d+ --> \d+:\d\d:\d\d\.\d+", rd(old["file"]))).encode(), usedforsecurity=False).hexdigest()
                 if old.get("tkey") == tkey:
                     same = old
                     break
@@ -2990,6 +3372,8 @@ class Manager:
 
     def local_prefix(self, d):
         """files that hold the movie contiguously from the start (what is downloaded so far)"""
+        if not d.media_ok():
+            return []
         r = d.r
         L = r.get("size") or 0
         if r["status"] == "done":
@@ -3036,7 +3420,8 @@ class Manager:
                 cmd = ["ffmpeg", "-nostdin", "-v", "error", "-y"] + (["-hwaccel", "videotoolbox", "-hwaccel_output_format", "videotoolbox_vld"] if hw else [])
                 cmd += ["-ss", str(t), "-i", src, "-frames:v", "1", "-vf", vt if hw else "scale=480:-2,format=yuvj420p", "-q:v", "4", tmp]
                 try:
-                    subprocess.run(cmd, capture_output=True, timeout=25)
+                    # security scan: argument list (no shell), absolute file paths and numbers only
+                    subprocess.run(cmd, capture_output=True, timeout=25)  # nosemgrep
                 except subprocess.TimeoutExpired:
                     continue
                 if fsize(tmp) > 0:
@@ -3098,7 +3483,10 @@ class Manager:
         h.update(headers or {})
         if referer:
             h["Referer"] = referer
-        with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=timeout) as f:
+        if not re.match(r"^https?://", url):
+            raise ValueError("not a web link")
+        # security scan: scheme checked
+        with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=timeout) as f:  # nosec B310
             return f.read(limit)
 
     def subs_search(self, d, lang="fa", query=""):
@@ -3189,6 +3577,8 @@ class Manager:
         """0/1 per 0.1 s: where people speak (voice band of the centre channel). Made once per film (~1 min for 3 h)
         in the background and cached; None while it is being made"""
         f = os.path.join(sub_dir(d.r["id"]), "speech.bin")
+        if not d.media_ok():
+            return None
         if fsize(f) > 0:
             return list(open(f, "rb").read())
         if d.r["status"] != "done" or not os.path.exists(d.out):
@@ -3356,7 +3746,8 @@ class Manager:
                     raise ValueError("not a http(s) link")
                 req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh) dlus/" + VERSION})
                 try:
-                    with urllib.request.urlopen(req, timeout=30) as f:
+                    # security scan: scheme checked above
+                    with urllib.request.urlopen(req, timeout=30) as f:  # nosec B310
                         raw = f.read(20 << 20)
                         cd = f.headers.get("Content-Disposition") or ""
                 except OSError as e:
@@ -3409,8 +3800,12 @@ class Manager:
         s.close()
         found = {}
         for loc, host in locs.items():
+            # a device may only describe itself: plain http to the address that answered (no file:// or other hosts)
+            if urllib.parse.urlsplit(loc).scheme != "http" or urllib.parse.urlsplit(loc).hostname != host:
+                continue
             try:
-                xml = urllib.request.urlopen(loc, timeout=4).read().decode("utf-8", "ignore")
+                # security scan: http to the answering device only
+                xml = urllib.request.urlopen(loc, timeout=4).read(1 << 20).decode("utf-8", "ignore")  # nosec B310
             except (OSError, ValueError):
                 continue
             tag = lambda t, x=xml: html.unescape((re.search(r"<%s>(.*?)</%s>" % (t, t), x, re.S) or [None, ""])[1].strip())
@@ -3418,11 +3813,14 @@ class Manager:
                         if "AVTransport" in tag("serviceType", b)), "")
             if not ctl:
                 continue
+            ctl = urllib.parse.urljoin(tag("URLBase") or loc, ctl)
+            if urllib.parse.urlsplit(ctl).scheme != "http" or urllib.parse.urlsplit(ctl).hostname != host:
+                continue  # its control address must be the device itself (stream links with the TV code go there)
             udn = tag("UDN") or loc
             mm = re.search(r" at ([0-9a-f:]{11,17}) ", sh(["arp", "-n", host], 3))
             mac = ":".join(x.zfill(2) for x in mm.group(1).split(":")) if mm else ""
             found[udn] = {"id": re.sub(r"\W", "", udn)[-16:], "name": tag("friendlyName") or host, "maker": tag("manufacturer"), "mac": mac,
-                          "model": tag("modelName"), "ip": host, "ctl": urllib.parse.urljoin(tag("URLBase") or loc, ctl), "seen": time.time()}
+                          "model": tag("modelName"), "ip": host, "ctl": ctl, "seen": time.time()}
         tvs = {t["id"]: t for t in self.settings.get("tvs") or []}
         for t in found.values():  # keep a known hardware address if this scan could not read it
             t["mac"] = t["mac"] or (tvs.get(t["id"]) or {}).get("mac", "")
@@ -3440,7 +3838,8 @@ class Manager:
         req = urllib.request.Request(ctl, body.encode(), {"Content-Type": 'text/xml; charset="utf-8"',
                                                          "SOAPACTION": '"urn:schemas-upnp-org:service:AVTransport:1#%s"' % action})
         try:
-            return urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")
+            # security scan: http to the TV's own address only (checked at discovery)
+            return urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "ignore")  # nosec B310
         except urllib.error.HTTPError as e:
             fault = re.search(r"<errorDescription>(.*?)</errorDescription>", e.read().decode("utf-8", "ignore"))
             raise ValueError("the TV refused %s (%s)" % (action, fault.group(1) if fault else "HTTP %d" % e.code))
@@ -3450,6 +3849,7 @@ class Manager:
     def cast(self, d, tvid, sound, at=0.0):
         self.need_lan()
         tv = self.tv_ensure(tvid)
+        self.lan_allow(tv["ip"], "you sent a film to this TV from the Mac", tv.get("name", ""))
         sub_on = bool(self.subs_info(d)["sid"])
         v = "s" if sound == "tv" else ("t" if sub_on else "")
         if v and not shutil.which("ffmpeg"):
@@ -3588,8 +3988,18 @@ class Manager:
         c = self.tv_conns.get(tvid)
         if c and c.sock:
             return tv, c
-        c = WebOSTV(tv["ip"], (self.settings.get("tv_keys") or {}).get(tvid, ""))
-        key = c.connect(wait=60)
+        pins = self.settings.setdefault("tv_pins", {})
+        c = WebOSTV(tv["ip"], (self.settings.get("tv_keys") or {}).get(tvid, ""), pins.get(tvid, ""))
+        try:
+            key = c.connect(wait=60)
+        except TVCertChanged as e:
+            self.audit("TV %s: certificate changed since pairing - connection refused" % tv.get("name", tvid), tv["ip"], level="warn")
+            raise ValueError(str(e))
+        if key and c.seen_pin and c.seen_pin != pins.get(tvid) and not (pins.get(tvid, "").startswith("tls:") and c.seen_pin == "plain"):
+            pins[tvid] = c.seen_pin  # first pairing, or an old TV that now speaks the encrypted port
+            self.save()
+        if key:
+            self.lan_allow(tv["ip"], "paired TV you control from the Mac", tv.get("name", ""))
         if key and key != (self.settings.get("tv_keys") or {}).get(tvid):
             self.settings.setdefault("tv_keys", {})[tvid] = key
             self.save()
@@ -3615,6 +4025,18 @@ class Manager:
         return "http://%s:%d/%s" % (self.lan_ip(), int(self.settings["lan_port"]), self.settings["lan_token"])
 
     def tv_action(self, tvid, act, body):
+        if act == "forget":  # unpair: drop the key and the remembered certificate; the next connection asks on the TV again
+            (self.settings.get("tv_keys") or {}).pop(tvid, None)
+            (self.settings.get("tv_pins") or {}).pop(tvid, None)
+            c = self.tv_conns.pop(tvid, None)
+            if c and c.sock:
+                try:
+                    c.sock.close()
+                except OSError:
+                    pass
+            self.audit("TV forgotten (pairing removed): %s" % tvid)
+            self.save()
+            return {"ok": True}
         if act == "open":
             self.need_lan()  # ask before anything is opened on the network
         for attempt in (0, 1):  # a stale connection is reopened once
@@ -3773,7 +4195,7 @@ class Manager:
         out = []
         for i, pth in enumerate(self.settings.get("share_dirs") or []):
             pth = os.path.realpath(os.path.expanduser(pth))
-            if os.path.isdir(pth):
+            if os.path.isdir(pth) and share_ok(pth):  # an older unsafe choice is ignored, not shared
                 out.append((i, pth))
         return out
 
@@ -3783,6 +4205,8 @@ class Manager:
         if i not in dirs:
             return None
         full = os.path.realpath(os.path.join(dirs[i], rel or "."))
+        if hidden_inside(dirs[i], full):
+            return None
         return full if full == dirs[i] or full.startswith(dirs[i] + os.sep) else None
 
     def dlna_folder(self, oid):
@@ -3855,6 +4279,12 @@ class Manager:
 
     def set_settings(self, s):
         old = self.settings.get("limit_mb")
+        for k, what in (("lan_on", "Sharing on the home network"), ("dlna_on", "DLNA library"), ("files_on", "Shared folders"),
+                        ("proxy_on", "Web proxy for other devices"), ("proxy_auth", "Proxy password")):
+            if k in s and bool(s[k]) != bool(self.settings.get(k)):
+                self.audit("%s turned %s" % (what, "on" if s[k] else "off"), level="warn" if bool(s[k]) != (k == "proxy_auth") else "info")
+        if isinstance(s.get("share_dirs"), list) and s["share_dirs"] != self.settings.get("share_dirs"):
+            self.audit("shared folders changed: %s" % ", ".join(os.path.basename(str(x).rstrip("/")) for x in s["share_dirs"][:20]) or "none")
         if isinstance(s.get("share_dirs"), list):
             dirs = []
             for d_ in s["share_dirs"][:20]:
@@ -3863,6 +4293,8 @@ class Manager:
                     raise ValueError("not a folder: %s" % d_)
                 if full in ("/", os.path.expanduser("~")):
                     raise ValueError("share a specific folder, not the whole disk or home folder")
+                if not share_ok(full):
+                    raise ValueError("%s holds private or system files (keys, settings) - share a folder with your media instead" % d_)
                 dirs.append(full)
             self.settings["share_dirs"] = dirs
         if s.get("dlna_quality") in QUALITY_LABELS:
@@ -3906,11 +4338,15 @@ class Manager:
             self.settings["proxy_port"] = pp
         if s.get("proxy_newpass"):
             self.settings["proxy_pass"] = short_code(8)
+            self.audit("new proxy password made")
         for k in ("sched_on", "notify", "lan_on", "dlna_on"):
             if k in s:
                 self.settings[k] = bool(s[k])
         if s.get("rotate_token"):
             self.settings["lan_token"] = short_code()
+            al = self.settings.get("lan_allowed") or {}
+            self.settings["lan_allowed"] = {k: v for k, v in al.items() if v.get("why", "").startswith("paired")}
+            self.audit("new code made - %d device(s) must be allowed again (paired TVs stay)" % (len(al) - len(self.settings["lan_allowed"])), level="warn")
         if str(s.get("lan_port", "")).strip():
             port = int(s["lan_port"])
             if port != int(self.settings["lan_port"]) and self.lan:
@@ -4168,6 +4604,7 @@ class Manager:
         self.gw.wake.set()
         ok = r.returncode == 0
         title = ("Helper updated" if v0 else "Helper installed") if act == "install" else "Helper removed"
+        self.audit("VPN-router root helper: %s%s" % (title.lower(), "" if ok else " - failed"), level="warn")
         res = self.gw_result(title if ok else title.replace("updated", "update").replace("installed", "install").replace("removed", "removal") + " failed", ok, out, before,
                              {"kind": "admin", "act": act, "v_from": v0, "v_to": self.gw.vers[0], "command": "sudo " + cmd.replace(" 2>&1", ""),
                               "checks": sum(1 for l in out.splitlines() if l.startswith("ok rules"))})
@@ -4210,7 +4647,7 @@ class Manager:
                                                        for t in G.tunnels()) or "none"),
                  ("VPN apps running", ", ".join(self.net.info.get("apps") or []) or "none"),
                  ("macOS VPN profiles", "\n".join("%s  %s  %s" % (v["status"], v["app"], v["name"]) for v in self.net.info.get("vpns") or []) or "none")]
-        if os.path.exists(GW_HELPER):
+        if os.path.exists(gw_helper()):
             ok, out = G.call("status", timeout=15)
             parts.append(("Router helper (dlus-gw status)", out if ok else "not usable: " + out))
         else:
@@ -4219,6 +4656,8 @@ class Manager:
 
     def gw_set(self, b):
         S = self.settings
+        if "on" in b and bool(b["on"]) != bool(S.get("gw_on")):
+            self.audit("VPN router turned " + ("on" if b["on"] else "off"), level="warn" if b["on"] else "info")
         if "on" in b:
             S["gw_on"] = bool(b["on"])
         if b.get("default") in ("tunnel", "direct"):
@@ -4305,6 +4744,10 @@ class Manager:
             d.sample()
             total += d.snap["now"]
         self.sessions.tick()
+        try:
+            self.save_audit()
+        except OSError:
+            pass
         if self.proxy:
             self.proxy.tick()
         # another device is watching over the local network: give the video the Wi-Fi airtime
@@ -4346,7 +4789,7 @@ class Manager:
             if r["status"] == "queued" and not d.alive:
                 qpos += 1
             items.append({k: r.get(k) for k in ("id", "url", "name", "dir", "size", "status", "msg", "conns", "ranges",
-                                                 "added", "finished", "checksum", "checksum_ok", "fails", "bound_ip",
+                                                 "added", "finished", "checksum", "checksum_ok", "checksum_src", "sha256", "verify", "fails", "bound_ip",
                                                  "net", "force", "num")}
                          | {"done": d.snap["done"] if r["status"] != "done" else r.get("size", 0), "now": d.snap["now"],
                             "avg": d.snap["avg"], "cat": category(r["name"]), "nconn": len(d.snap["conn"]),
@@ -4372,7 +4815,7 @@ class Manager:
                        for k in range(13, -1, -1)]}
         return {"cats": cats, "version": VERSION, "state_dir": STATE_DIR, "home": os.path.expanduser("~"), "settings": self.settings, "now": self.gnow, "hist": list(self.ghist), "items": items,
                 "folders": sorted(folders), "t": time.time(), "net": self.net.info, "stats": st, "disk": disk,
-                "players": self.players(), "sched_wait": self.sched_wait, "casting": self.casting, "devices": self.sessions.snapshot(),
+                "players": self.players(), "sched_wait": self.sched_wait, "casting": self.casting, "devices": self.sessions.snapshot(), "access": self.access_state(),
                 "share": self.share_state(), "throttled": getattr(self, "throttled", None), "audio_modes": AUDIO_MODES, "mk": self.media_key,
                 "tv_now": self.tv_now if self.tv_now and time.time() - self.tv_now["at"] < 5 else None, "qualities": QUALITY_LABELS,
                 "gw": self.gw.state(),
@@ -4430,6 +4873,8 @@ def send_stream(h, d, lan=False):
     L = d.r.get("size") or 0
     if not L:
         return h.out(404, {"error": "not started yet"})
+    if not d.media_ok():
+        return h.out(415, {"error": "this file is a playlist disguised as a video - refused for safety"})
     a, b, partial = 0, L - 1, False
     mm = re.match(r"bytes=(\d*)-(\d*)", h.headers.get("Range", ""))
     if mm and (mm.group(1) or mm.group(2)):
@@ -4488,7 +4933,7 @@ def probe(m, d):
     """duration, codecs and audio tracks via ffprobe (cached per download)"""
     if getattr(d, "probe_info", None):
         return d.probe_info
-    if not shutil.which("ffprobe") or not (d.snap.get("prefix") or d.r["status"] == "done"):
+    if not shutil.which("ffprobe") or not (d.snap.get("prefix") or d.r["status"] == "done") or not d.media_ok():
         return {}
     url = "http://127.0.0.1:%d/stream/%s/x?ik=%s" % (m.port, d.r["id"], m.media_key)
     raw = sh(["ffprobe", "-v", "error", "-show_entries",
@@ -5643,10 +6088,38 @@ def make_lan_handler(m):
             self.out(403, b"", "text/plain")
             return False
 
+        def gate(self, parts):
+            """True = go on. A request with the code must come from a device the user allowed; a wrong code counts as a failed try."""
+            ip, tok = self.client_address[0], m.settings.get("lan_token", "")
+            fails = [t for t in m.pin_fail.get(ip, []) if time.time() - t < 600]
+            if parts[0] and tok and secrets.compare_digest(parts[0].encode(), tok.encode()):
+                if len(fails) >= 10:
+                    self.out(429, b"too many wrong codes - wait 10 minutes", "text/plain")
+                    return False
+                what = {"tv": "opened the TV home page", "files": "browsed the shared folders", "fplay": "played a shared file",
+                        "proxy.pac": "loaded the proxy settings", "netsetup": "opened the VPN setup page", "netcheck": "VPN check",
+                        "cmd": "TV player"}.get(parts[1] if len(parts) > 1 else "", "opened a film or stream")
+                if m.lan_access(ip, self.headers.get("User-Agent", ""), what):
+                    return True
+                if self.command == "GET" and "text/html" in (self.headers.get("Accept") or ""):
+                    self.out(403, WAIT_PAGE.encode(), "text/html; charset=utf-8")
+                else:
+                    self.out(403, {"error": "waiting for approval in dlus on the Mac"})
+                return False
+            if re.match(r"^[a-km-np-z2-9]{6}$", parts[0] or ""):  # looks like a code, but the wrong one
+                m.pin_fail[ip] = fails + [time.time()]
+                if len(fails) + 1 == 10:
+                    m.audit("10 wrong codes in 10 minutes - blocked for 10 minutes", ip, level="warn")
+                self.out(429 if len(fails) >= 10 else 404, b"", "text/plain")
+                return False
+            return True
+
         def do_GET(self):
             if not self.ok_client():
                 return
             parts = [urllib.parse.unquote(x) for x in self.path.split("?")[0].strip("/").split("/")]
+            if not self.gate(parts):
+                return
             if len(parts) == 2 and parts[0] == "fonts" and re.match(r"^[\w\-]+\.(woff2|woff|ttf|otf)$", parts[1]) and os.path.exists(os.path.join(fonts_dir(), parts[1])):
                 with open(os.path.join(fonts_dir(), parts[1]), "rb") as f:
                     return self.out(200, f.read(), FONT_MIME[parts[1].rsplit(".", 1)[1]], {"Cache-Control": "max-age=31536000"})
@@ -5668,8 +6141,12 @@ def make_lan_handler(m):
                     return self.out(429, {"ok": False, "error": "too many tries - wait 10 minutes"})
                 if code and secrets.compare_digest(code, m.settings.get("lan_token", "")):
                     m.sessions.saw(self, "connected with the code")
+                    m.audit("entered the right code", ip)
+                    m.lan_access(ip, self.headers.get("User-Agent", ""), "entered the code")
                     return self.out(200, {"ok": True, "home": "/%s/tv" % m.settings["lan_token"]})
                 m.pin_fail[ip] = fails + [time.time()]
+                if len(fails) + 1 == 10:
+                    m.audit("10 wrong codes in 10 minutes - blocked for 10 minutes", ip, level="warn")
                 return self.out(403, {"ok": False, "error": "wrong code"})
             if parts[0] == m.settings.get("lan_token") and parts[1:] == ["cmd"]:
                 q = {k: v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
@@ -5918,6 +6395,8 @@ def make_lan_handler(m):
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode("utf-8", "ignore")
             action = (self.headers.get("SOAPACTION") or "").strip().strip('"').split("#")[-1]
             xml = None
+            if m.ssdp and self.path.startswith("/dlna/") and not m.lan_access(self.client_address[0], self.headers.get("User-Agent", ""), "browsed the library (DLNA)"):
+                return self.out(403, b"", "text/plain")
             if m.ssdp and self.path.startswith("/dlna/cds/"):
                 m.sessions.saw(self, "browsed the dlus library (DLNA)")
                 xml = dlna_cds(m, action, body)
@@ -5939,11 +6418,19 @@ def make_lan_handler(m):
     return L
 
 
+WAIT_PAGE = """<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<meta http-equiv=refresh content=3><title>dlus - waiting for approval</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0f1a;color:#eef;font:20px/1.5 -apple-system,system-ui,sans-serif;text-align:center}
+div{max-width:640px;padding:32px}b{color:#9d92ff}small{color:#99a}</style></head><body><div>
+<h1>Waiting for approval</h1><p>Open <b>dlus on the Mac</b> and press <b>Allow</b> for this device.</p>
+<small>This page continues by itself once you are allowed.</small></div></body></html>"""
+
 LOCAL_PLAYER_PORT = 8644
 
 
 class LanServer:
-    def __init__(self, m, host="0.0.0.0", port=None):
+    # security scan: home-network server, only when the user turns sharing on; private addresses only
+    def __init__(self, m, host="0.0.0.0", port=None):  # nosec B104
         """host 0.0.0.0 = the home network (only when the user allowed sharing); 127.0.0.1 = the Mac's own player"""
         self.srv = http.server.ThreadingHTTPServer((host, int(port or m.settings["lan_port"])), make_lan_handler(m))
         self.srv.daemon_threads = True
@@ -6004,7 +6491,8 @@ class SSDP:
                 r.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             r.bind(("", 1900))
             r.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
-                         struct.pack("4s4s", socket.inet_aton(self.GRP[0]), socket.inet_aton("0.0.0.0")))
+                         # security scan: SSDP multicast membership, not a bind
+                         struct.pack("4s4s", socket.inet_aton(self.GRP[0]), socket.inet_aton("0.0.0.0")))  # nosec B104
             r.settimeout(1)
         except OSError:
             log.exception("ssdp: cannot listen on UDP 1900")
@@ -6196,6 +6684,8 @@ def make_handler(m, port):
                     return self.out(200, {"id": m.import_local(full).r["id"]})
                 if parts == ["api", "fonts"]:
                     return self.out(200, m.fonts_set(body))
+                if parts == ["api", "access"]:
+                    return self.out(200, m.lan_decide(body))
                 if parts == ["api", "gw"]:
                     return self.out(200, m.gw_set(body))
                 if parts == ["api", "gw", "dismiss"]:
@@ -6242,7 +6732,8 @@ def cli_add(args):
                        "start": not args.paused}).encode()
     req = urllib.request.Request("http://127.0.0.1:%d/api/add" % args.port, body, {"Content-Type": "application/json", "Cookie": "dlus_k=" + ui_key()})
     try:
-        print(urllib.request.urlopen(req, timeout=10).read().decode())
+        # security scan: fixed http://127.0.0.1 URL
+        print(urllib.request.urlopen(req, timeout=10).read().decode())  # nosec B310
     except urllib.error.HTTPError as e:
         sys.exit(e.read().decode())
     except OSError as e:
@@ -6442,6 +6933,7 @@ kbd{display:inline-block;padding:0 6px;min-width:20px;text-align:center;border-r
 .lg{display:flex;flex-wrap:wrap;gap:12px;color:var(--mut);font-size:11px;margin-top:9px}.lg span:before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--c)}
 .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
 .kpi div{padding:8px;border-radius:10px;background:var(--panel);border:1px solid var(--line);text-align:center}.kpi b{display:block;font-size:18px;font-weight:700}.kpi small{color:var(--mut);font-size:11px}
+.vfy{margin:10px 0;font-size:12px;display:flex;flex-direction:column;gap:6px}.vrow2{display:flex;gap:6px}.vrow2 .in{flex:1;min-width:0;font-size:12px}
 .ev{max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:3px;font-size:12px}
 .ev div{display:flex;gap:9px;padding:4px 6px;border-radius:7px}.ev div:hover{background:var(--hover)}
 .ev time{color:var(--dim);flex:none;font-variant-numeric:tabular-nums}.ev .f span{color:var(--red)}.ev .ok span{color:var(--green)}.ev .w span{color:var(--amber)}
@@ -6668,6 +7160,7 @@ video,audio{width:100%;max-height:62vh;background:#000;display:block;outline:non
   <button class=ibtn id=thbtn title="Theme" onclick="cycleTheme()"></button>
   <button class=ibtn title="Settings (,)" onclick="openSet()"><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=3 /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
  </div>
+ <div id=accessban></div>
  <div id=banners></div>
  <section id=v-list>
   <div class=head><h1 id=vtitle>All downloads</h1><span class=cnt id=vcount></span><div class=tools id=vtools></div></div>
@@ -6686,6 +7179,8 @@ video,audio{width:100%;max-height:62vh;background:#000;display:block;outline:non
   <h2 class=sec>Watching now</h2><div id=devlive></div>
   <h2 class=sec>Seen in the last hour</h2><div id=devseen></div>
   <h2 class=sec>Play history</h2><div class=card style="padding:0;overflow:hidden"><table class=htab id=devhist></table></div>
+  <h2 class=sec>Allowed devices</h2><div class=note style="margin-top:0">Only these devices can open the TV home page, streams, shared folders, the library (DLNA) and the proxy. A new device must be allowed here first, even with the right code.</div><div id=devallowed></div>
+  <h2 class=sec>Activity log</h2><div class=card style="padding:0;overflow:hidden;max-height:520px;overflow-y:auto"><table class=htab id=devaudit></table></div>
  </section>
  <section id=v-fonts class=hide>
   <div class=head><h1>Fonts</h1><span class=cnt>for subtitles in the dlus players (Mac and TV)</span><div class=tools><button class="btn pri" onclick="$('fontfile').click()">Add your own font&hellip;</button></div></div>
@@ -6910,6 +7405,7 @@ function inView(it, v) {
 function setView(v) { VIEW = v; window.scrollTo(0, 0); render() }
 function render() {
   if (!ST) return;
+  renderAccess();
   $("ver").textContent = "v" + ST.version;
   var items = ST.items, q = $("q").value.trim().toLowerCase();
   if (/^(https?|ftp):\/\//.test(q)) q = "";
@@ -7106,6 +7602,22 @@ var DEVICON = { tv: I.tv, phone: sv('<rect x="7" y="2" width="10" height="20" rx
   computer: sv('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/>') };
 function ago(t) { var s = Date.now() / 1000 - t; return s < 60 ? Math.round(s) + " s ago" : s < 3600 ? Math.round(s / 60) + " min ago" : s < 86400 ? Math.round(s / 3600) + " h ago" : new Date(t * 1000).toLocaleDateString() }
 function mbit(x) { return (x * 8 / 1e6).toFixed(1) + " Mbit/s" }
+function renderAccess() {
+  var A = ST.access || { pending: [], allowed: [], log: [] };
+  var h = A.pending.map(function (p) {
+    return "<div class='card' style='display:flex;gap:14px;align-items:center;border:1px solid var(--amber);margin-bottom:10px'><div class=fi style='--c:var(--amber)'>" + I.warn + "</div>" +
+      "<div style='flex:1;min-width:0'><b>" + esc(p.name) + "</b> asks to use dlus<div class=t2>" + esc(p.ip) + (p.host && p.host != p.name ? " \u00b7 " + esc(p.host) : "") + (p.mac ? " \u00b7 " + esc(p.mac) : "") + " \u00b7 " + esc(p.what) + " \u00b7 " + ago(p.at) + "</div>" +
+      "<div class=t2 style='color:var(--dim)'>" + esc(p.ua || "") + "</div><div class=t2>Allow it only if you know this device. It then can watch your films, open shared folders and use the proxy.</div></div>" +
+      "<button class='btn pri' data-ip='" + esc(p.ip) + "' data-a=allow>Allow</button><button class=btn data-ip='" + esc(p.ip) + "' data-a=deny>Deny</button></div>";
+  }).join("");
+  if ($("accessban")._h != h) {
+    $("accessban").innerHTML = h; $("accessban")._h = h;
+    $("accessban").querySelectorAll("button").forEach(function (b) { b.onclick = function () { accessDo(b.dataset.ip, b.dataset.a) } });
+  }
+}
+function accessDo(ip, act) {
+  api("/api/access", { ip: ip, act: act }).then(function () { toast(act == "allow" ? "Allowed" : act == "deny" ? "Denied for 1 hour" : "Access removed"); return poll() }).catch(function (e) { toast("Error: " + e.message) });
+}
 function renderDevices() {
   var D = ST.devices || { live: [], hist: [], seen: [], rates: [] }, now = D.rates.length ? D.rates[D.rates.length - 1] : 0;
   var ips = {}; D.live.concat(D.seen).forEach(function (x) { ips[x.ip] = 1 });
@@ -7129,6 +7641,16 @@ function renderDevices() {
   $("devhist").innerHTML = "<tr><th>When</th><th>Device</th><th>IP</th><th>Watched</th><th>How</th><th>Time</th><th>Data</th></tr>" + (D.hist.map(function (x) {
     return "<tr><td>" + ago(x.start) + "</td><td>" + esc(x.device) + "</td><td>" + esc(x.ip) + "</td><td class=ht>" + esc(x.title) + "</td><td>" + esc(x.variant) + "</td><td>" + dur(x.last - x.start) + "</td><td>" + hs(x.bytes) + "</td></tr>";
   }).join("") || "<tr><td colspan=7 class=note style='padding:14px'>No plays yet.</td></tr>");
+  var A = ST.access || { allowed: [], log: [] };
+  var al = A.allowed.map(function (a) {
+    return "<div class=vrow><span class=dot></span><b>" + esc(a.name) + "</b><span class=vn>" + esc(a.ip) + (a.mac ? " \u00b7 " + esc(a.mac) : "") + " \u00b7 " + esc(a.why || "") + " \u00b7 last seen " + ago(a.last || a.at) + "</span>" +
+      "<button class='btn' style='margin-left:auto' onclick=\"if(confirm('Remove access for this device? It must be allowed again to use dlus.'))accessDo('" + esc(a.ip) + "','remove')\">Remove</button></div>";
+  }).join("");
+  $("devallowed").innerHTML = al ? "<div class=card>" + al + "</div>" : "<div class=note>No devices allowed yet.</div>";
+  var lg = "<tr><th>When</th><th>Device</th><th>IP</th><th>What</th></tr>" + (A.log.map(function (x) {
+    return "<tr" + (x.level == "warn" ? " style='color:var(--amber)'" : "") + "><td title='" + new Date(x.t * 1000).toLocaleString() + "'>" + ago(x.t) + "</td><td>" + esc(x.device || "") + "</td><td>" + esc(x.ip || "this Mac") + "</td><td class=ht>" + esc(x.event) + "</td></tr>";
+  }).join("") || "<tr><td colspan=4 class=note style='padding:14px'>Nothing yet.</td></tr>");
+  if ($("devaudit")._h != lg) { $("devaudit").innerHTML = lg; $("devaudit")._h = lg }
 }
 function gwSet(o) { api("/api/gw", o).then(poll).catch(function (e) { toast("Error: " + e.message) }) }
 function gwPol(mac, v) { var p = {}; p[mac] = v; gwSet({ policy: p }); toast(v == "tunnel" ? "Tunnel — this device's internet now goes through the VPN" : v == "direct" ? "Direct — this device skips the VPN" : "Uses the default") }
@@ -7179,7 +7701,7 @@ function renderGw() {
 }
 var GWIP = "";
 function gwWhat() {
-  return "<ol class=steps><li>copies <code>dlus-gw</code> to <code>/usr/local/libexec/dlus-gw</code>, owned by root (dlus itself cannot change it)</li>" +
+  return "<ol class=steps><li>copies <code>dlus-gw</code> to <code>/Library/PrivilegedHelperTools/dlus-gw</code>, a root-only folder (neither dlus nor any other program can change it)</li>" +
     "<li>adds <code>/etc/sudoers.d/dlus-gw</code>: your user may run <b>only that file</b> as root, nothing else</li>" +
     "<li>checks its firewall rules (<code>dlus-gw selftest</code>)</li></ol>The helper can only: turn IP forwarding on/off, load dlus's own firewall anchor (<code>com.apple/dlus</code>, your other rules stay untouched), and add/remove the two &ldquo;route everything&rdquo; routes. Command: <code>" + esc(ST.gw.install) + "</code>";
 }
@@ -7188,7 +7710,7 @@ function gwResultHtml(r) {
   var chip = function (cls, t) { return "<span class='gchip " + cls + "'>" + t + "</span>" };
   var chips = [];
   if (r.kind == "admin" && r.act == "install") chips.push(chip("ok", "Helper " + (r.v_from ? "v" + r.v_from + " &rarr; " : "") + "v" + (r.v_to || "?")));
-  if (r.kind == "admin" && r.act == "install") chips.push(chip("ok", "Only <code>/usr/local/libexec/dlus-gw</code> may run as root"));
+  if (r.kind == "admin" && r.act == "install") chips.push(chip("ok", "Only <code>/Library/PrivilegedHelperTools/dlus-gw</code> may run as root"));
   if (r.checks) chips.push(chip("ok", r.checks + "/3 firewall checks passed"));
   chips.push(chip(r.added || r.removed ? "acc" : "", r.added || r.removed ? (r.added ? "+" + r.added + " route" + (r.added > 1 ? "s" : "") : "") + (r.added && r.removed ? " &middot; " : "") + (r.removed ? "&minus;" + r.removed + " removed" : "") : "Your routes did not change"));
   var lines = r.lines.map(function (l) { var good = /^(ok|installed|done|removed)|: ok$/i.test(l), bad = /error|fail|refus|could not|no internet/i.test(l);
@@ -7316,7 +7838,14 @@ function mk(it) {
     "<div class=box><h4>Chunks <span class=dcm></span></h4><div class=g></div><div class=lg><span style='--c:var(--green)'>checked</span><span style='--c:var(--acc)'>downloading</span><span style='--c:var(--amber)'>checking</span><span style='--c:var(--red)'>failed, re-downloading alone</span><span style='--c:var(--line2)'>waiting</span></div></div>" +
     "<div class=box><h4>Details</h4><div class=info></div></div></div>" +
     "<div><div class=box><h4>Connections <span class=dcn></span></h4><div class=conns></div></div>" +
-    "<div class=box><h4>Integrity</h4><div class=kpi><div><b class=kok style='color:var(--green)'>0</b><small>chunks verified</small></div><div><b class=kbad style='color:var(--red)'>0</b><small>fixed</small></div><div><b class=kcs>-</b><small>checksum</small></div></div><div class=ev></div></div></div></div>";
+    "<div class=box><h4>Integrity</h4><div class=kpi><div><b class=kok style='color:var(--green)'>0</b><small>chunks verified</small></div><div><b class=kbad style='color:var(--red)'>0</b><small>fixed</small></div><div><b class=kcs>-</b><small>checksum</small></div></div>" +
+    "<div class=vfy><div class=ksha></div><div class=vrow2><input class=in placeholder='Paste the publisher&#39;s checksum (SHA-256, SHA-512, SHA-1, MD5) or a link to their checksum file'><button class=btn data-v=1>Verify</button></div><div class=vres></div></div>" +
+    "<div class=ev></div></div></div></div>";
+  el.querySelector(".vfy button").onclick = function (e) {
+    e.stopPropagation();
+    var cs = el.querySelector(".vfy input").value.trim();
+    api("/api/d/" + it.id + "/verify", { checksum: cs }).then(function () { toast("Checking the file..."); poll() }).catch(function (e) { toast("Error: " + e.message) });
+  };
   el.querySelector(".row").onclick = function (e) {
     var b = e.target.closest("button");
     if (b) { e.stopPropagation(); return btn(it.id, b.dataset.a) }
@@ -7380,6 +7909,11 @@ function renderDet(id) {
     q(".kok").textContent = d.ok; q(".kbad").textContent = d.fails;
     q(".kcs").textContent = !it.checksum ? "-" : it.checksum_ok === true ? "OK" : it.checksum_ok === false ? "FAIL" : "...";
     q(".kcs").style.color = it.checksum_ok === true ? "var(--green)" : it.checksum_ok === false ? "var(--red)" : "";
+    q(".vfy").style.display = it.status == "done" ? "" : "none";
+    q(".ksha").innerHTML = it.sha256 ? "SHA-256 <code style='user-select:all;word-break:break-all'>" + esc(it.sha256) + "</code>" + (it.checksum_src ? "<br><small>checked against " + esc(it.checksum_src) + "</small>" : "") : "";
+    var v = it.verify;
+    q(".vres").innerHTML = !v ? "" : v.state == "running" ? "Checking... " + esc(it.msg || "") :
+      "<span style='color:" + (v.state == "ok" ? "var(--green)" : v.state == "bad" ? "var(--red)" : "inherit") + "'>" + (v.state == "ok" ? "✓ " : v.state == "bad" ? "✗ " : "") + esc(v.text || "") + "</span>";
     q(".ev").innerHTML = d.ev.map(function (l) {
       var c = /FAILED|ERROR/.test(l) ? "f" : /OK|done/.test(l) ? "ok" : /reusing|started|adopt|resumed|refreshed|jumped/.test(l) ? "r" : /error|HTTP|paused|retrying|schedule/.test(l) ? "w" : "";
       return "<div class=" + c + "><time>" + esc(l.slice(0, 8)) + "</time><span>" + esc(l.slice(9)) + "</span></div>";
@@ -7636,7 +8170,8 @@ function tvpRender() {
   $("tvplist").innerHTML = tvs.length ? tvs.map(function (t) {
     return "<div class=tvr><span class=ti>" + I.tv + "</span><div class=tn><b>" + esc(t.name) + "</b><span>" + esc([t.model, t.ip].filter(Boolean).join(" · ")) + (t.paired ? " · <span style='color:var(--green)'>connected</span>" : "") + "</span></div>" +
       "<button class='btn pri' title='The TV plays the original file itself: full 4K HDR picture processing, original sound, subtitle included' onclick=\"tvpNative('" + t.id + "')\">" + I.play + "LG player &middot; best picture</button>" +
-      "<button class=btn title='dlus controls and subtitle styles; the TV browser shows a weaker picture' onclick=\"tvpOpen('" + t.id + "')\">dlus player</button></div>";
+      "<button class=btn title='dlus controls and subtitle styles; the TV browser shows a weaker picture' onclick=\"tvpOpen('" + t.id + "')\">dlus player</button>" +
+      (t.paired ? "<button class=btn title='Remove the pairing: the TV asks to Allow dlus again next time' onclick=\"if(confirm('Forget this TV? Next time the TV asks to allow dlus again.'))api('/api/tv/" + t.id + "/forget',{}).then(function(){toast('TV forgotten');poll()})\">Forget</button>" : "") + "</div>";
   }).join("") : "<div class=note>No TV found yet.</div>";
   var dq = ST.settings.dlna_quality || "saver", ql = ST.qualities || {};
   $("tvpnote").innerHTML = "<div style='display:flex;gap:10px;align-items:center;margin-bottom:8px'><span>Quality for the TV's own player:</span><select class=in style='width:auto' onchange=\"api('/api/settings',{dlna_quality:this.value}).then(poll)\">" +

@@ -4,7 +4,6 @@ set -u
 RES="$(cd "$(dirname "$0")" && pwd)"  # setup.sh lives in dlus.app/Contents/Resources
 LABEL=com.dlus
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-UI=http://127.0.0.1:8642/
 mkdir -p "$HOME/.dlus" "$HOME/Library/LaunchAgents"
 
 say() { osascript -e "display dialog \"$1\" with title \"dlus\" buttons {\"OK\"} default button 1 with icon caution" >/dev/null 2>&1; }

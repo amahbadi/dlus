@@ -1,8 +1,8 @@
 """syntax-check the JavaScript embedded in dlus.py (Mac page, TV player, shared subtitle code) with node --check"""
-import re, subprocess, sys, tempfile, os
+import ast, re, subprocess, sys, tempfile, os
 s = open(sys.argv[1]).read()
 a = s.index("SUBJS = ")
-subjs = eval(s[a + 8:s.index("\n", a)])
+subjs = ast.literal_eval(s[a + 8:s.index("\n", a)])
 bad = 0
 for name in ("PAGE", "TV_PAGE"):
     a = s.index('\n%s = r"""' % name) + len('\n%s = r"""' % name)

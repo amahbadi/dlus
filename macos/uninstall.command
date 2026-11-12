@@ -2,7 +2,7 @@
 # Removes the dlus background service (and, if installed, the VPN-router helper). Your downloads and ~/.dlus stay.
 launchctl bootout "gui/$(id -u)/com.dlus" 2>/dev/null
 rm -f "$HOME/Library/LaunchAgents/com.dlus.plist"
-if [ -x /usr/local/libexec/dlus-gw ]; then
+if [ -x /Library/PrivilegedHelperTools/dlus-gw ] || [ -x /usr/local/libexec/dlus-gw ]; then
 	echo "Removing the VPN-router helper (asks for your Mac password)..."
 	sudo bash /Applications/dlus.app/Contents/Resources/gateway/uninstall.sh
 fi

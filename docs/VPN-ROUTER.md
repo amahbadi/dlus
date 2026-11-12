@@ -46,9 +46,10 @@ Some VPNs send only certain networks through the tunnel (split tunnel). dlus sho
 
 What the installer does, nothing more:
 
-- copies `dlus-gw` to `/usr/local/libexec/dlus-gw`, owned by root, so dlus itself cannot change it
+- copies `dlus-gw` to `/Library/PrivilegedHelperTools/dlus-gw`, a root-only folder, so neither dlus nor any other program can change it (the installer refuses if a folder on that path is not root-only)
 - adds `/etc/sudoers.d/dlus-gw`, which lets **your** user run **only that one file** as root, without a password
 - runs `dlus-gw selftest`, which syntax-checks the firewall rules and changes nothing
+- removes the helper from its old place (`/usr/local/libexec`), if an older dlus put it there
 
 Prefer Terminal? Run the command dlus shows under *what exactly runs as administrator*:
 
@@ -90,6 +91,8 @@ No app can change a TV's network settings for you; you type them once. If the Ma
 ## Safety
 
 - **Firewall:** all rules live in their own anchor, `com.apple/dlus`. `/etc/pf.conf` and your other rules are never edited.
+- **Only your devices:** a device that is not on the Tunnel or Direct list cannot use the Mac as a router. If someone on your network points their gateway at the Mac, their traffic is dropped, so they cannot reach the VPN's private networks through it.
+- **Helper location:** `/Library/PrivilegedHelperTools/dlus-gw`, a root-only folder. Older versions used `/usr/local/libexec`, which can be writable by your user on Macs with Homebrew; **Update helper** moves it.
 - **Turning it off:** the router restores IP forwarding to what it was before and removes its rules and routes.
 - **The helper checks its input:** it accepts only a fixed set of commands with checked arguments (interface names, IPv4 addresses).
 - **No `route-to`:** dlus does not push packets into the tunnel with pf's `route-to`. On macOS 26 that crashed the system (kernel panic) with some VPN tunnels. Traffic follows the normal routing table instead.

@@ -42,12 +42,22 @@ Prefer the browser? **Settings &rarr; Open dlus in &rarr; my web browser**. Hold
 Options in the *New download* box:
 - **Folder** - a name creates a folder in your download folder; `~/Movies/...` or `/path` is used as is. Empty = sorted by type (Video, Audio, ...).
 - **Connections per file** - 8 is a good default; more helps on fast but per-connection-limited servers.
-- **Checksum** - paste `sha256:...` (or md5 / sha1) and dlus verifies the finished file.
+- **Checksum** - paste the publisher's checksum (`sha256:...`, a plain SHA-256 / SHA-512 / SHA-1 / MD5 value, or a line copied from their download page) or a **link to their checksum file**. dlus verifies the finished file.
 - **Start now** - untick to queue it.
 
 How it stays safe:
 - The file is fetched in 256 MB pieces over many connections; each piece is checked against the server at several points; a broken piece is fetched again alone.
 - Wi-Fi drop, sleep, restart: it continues where it stopped - never from zero. Links that expire can be refreshed by pasting the new link onto the same download.
+- **Installers, disk images and archives** (`.iso`, `.dmg`, `.pkg`, `.zip` ...): if you gave no checksum, dlus looks for the publisher's checksum file next to the download (`file.iso.sha256`, `SHA256SUMS` ...) and checks against it.
+- A file that does **not** match is set aside as `<name>.checksum-failed` and marked failed - do not open it. **Resume** downloads it again from scratch.
+- Every finished file gets the macOS quarantine flag (like a Safari download), so macOS checks apps and installers from it before they run.
+
+**Check a file later** (open a finished download &rarr; *Integrity*):
+- its **SHA-256** is shown - compare it with the one on the publisher's website;
+- **Verify** with an empty box checks that the file was not changed since it was downloaded;
+- **Verify** with a pasted checksum or checksum-file link checks it against the publisher. Example: you downloaded an installer ISO and the vendor's page shows its SHA-256 - paste it and press Verify.
+
+A checksum from the same server proves the file arrived intact; a checksum from the publisher's own page also proves nobody swapped the file on a mirror. Use the publisher's when you have it.
 
 Managing:
 - **Pause / resume / retry / delete** on each row; **Queue** decides the order (drag or the arrows). Settings sets how many run at once.
@@ -161,7 +171,11 @@ Nothing is reachable from your network until you allow it (**Sharing**).
 - **Shared folders** - add folders; they appear on the TV home page and in DLNA. macOS may ask dlus for access to Downloads / Desktop.
 - **DLNA** - the TV (and other DLNA players) list dlus under media sources.
 - **Proxy** - an HTTP proxy for other devices, with a password.
-- **New secret link** changes the code; TVs must enter the new one.
+- **New secret link** changes the code; TVs must enter the new one, and every allowed device except paired TVs must be allowed again.
+
+**Every device must be allowed.** The first time a TV, phone or computer opens dlus (TV home page, a stream link, shared folders, DLNA or the proxy), it sees *Waiting for approval* and dlus shows a banner: **Allow** or **Deny** (blocked for an hour). TVs you paired or sent a film to from the Mac are allowed by themselves. Allowed devices are listed under **Devices & viewers**, where **Remove** takes access away again.
+
+Private places can never be shared: system folders, `~/Library`, `~/.ssh`, the dlus settings folder, and hidden files inside shared folders.
 
 ## 10. VPN router
 
@@ -171,7 +185,7 @@ In short: **VPN router &rarr; Install helper** (macOS password, once) &rarr; **C
 
 ## 11. Devices and viewers
 
-**Devices & viewers**: who is watching what right now (device, film, speed), and a history. Devices are named by their network names (Bonjour / your router); unnamed phones and tablets with private Wi-Fi addresses are labelled as such. Rename a device by clicking its name (VPN router page).
+**Devices & viewers**: who is watching what right now (device, film, speed), a play history, the **allowed devices** (with *Remove*), and the **activity log**: devices asking for access, allowed or denied, wrong codes, streams started, sharing / proxy / VPN router turned on or off, the root helper installed, downloads added, checksum results and refused files. Devices are named by their network names (Bonjour / your router); unnamed phones and tablets with private Wi-Fi addresses are labelled as such. Rename a device by clicking its name (VPN router page).
 
 ## 12. Settings
 

@@ -8,11 +8,17 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash # -eo pipefail: a failing scanner fails the step even when piped into tee
+
 jobs:
   check:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Python compiles
         run: python3 -m py_compile dlus.py
       - name: No undefined names
@@ -21,5 +27,9 @@ jobs:
         run: python3 macos/check_js.py dlus.py
       - name: Shell scripts syntax
         run: for f in gateway/*.sh gateway/dlus-gw macos/*.sh macos/uninstall.command; do bash -n "$f"; done
+      - name: Security tests
+        run: python3 -m unittest discover -s tests -v
+      - name: VPN-router firewall rules load in macOS pf (syntax check, changes nothing)
+        run: sudo bash gateway/dlus-gw selftest | tee /dev/stderr | grep -c '^ok rules' | grep -qx 3
       - name: Native app compiles
         run: swiftc -O -target arm64-apple-macos12.0 -o /tmp/dlus macos/main.swift
