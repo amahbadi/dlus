@@ -37,37 +37,54 @@ A download manager that never starts over, a 4K HDR player for LG webOS TVs, sub
 
 ## 🌊 Why dlus exists
 
-*The Odyssey* had just come out, and I wanted to watch it at home the way it deserves: the full 4K HDR copy, all ~88 GB of it. The connection was unstable. Every downloader I tried either started over after a drop, or silently corrupted the file - I found out only when the first gigabytes would not play.
-
-So I wrote a small script that downloads in many parts and checks every piece. Then I wanted to watch while it was still downloading. Then on the TV. Then with Persian subtitles that were actually in sync, a proper remote, and my VPN on the TV. A couple of days later that script had become **dlus** ("downloader for us"). 🍿
+> *The Odyssey* had just come out, and I wanted to watch it at home the way it deserves: the full 4K HDR copy, all ~88 GB of it. The connection was unstable. Every downloader I tried either started over after a drop, or silently corrupted the file - I found out only when the first gigabytes would not play.
+>
+> So I wrote a small script that downloads in many parts and checks every piece. Then I wanted to watch while it was still downloading. Then on the TV. Then with Persian subtitles that were actually in sync, a proper remote, and my VPN on the TV. A couple of days later that script had become **dlus** ("downloader for us"). 🍿
 
 ## ✨ What it does
 
-**⬇️ Downloads that finish**
-- Many connections per file; every piece is checked, so a resumed file is never corrupted
-- Survives Wi-Fi drops, sleep and restarts - it continues where it stopped
-- 🔐 Checksums: paste the publisher's, or dlus finds their checksum file itself; every file gets a SHA-256, a **Verify** button and the macOS quarantine flag
-- Queue, folders, speed limit, schedule, checksum check, live speed graph
-- Watch a film while it is still downloading
+<table>
+<tr>
+<td width="50%" valign="top">
 
-**📺 Your LG TV (webOS)**
-- **Play on TV** from the Mac with LG's own player - the original 4K HDR file, untouched, with your subtitle
-- Or the **dlus player** on the TV: a full-screen glass player with seek previews, resume, quality and sound choices, subtitle styles, and a one-press switch to LG's player
-- **Remote control** on the Mac laid out like the LG Magic Remote: apps, inputs, typing text, volume, screen off, the TV's picture mode
-- **TV home page**: browse your films and shared folders on the TV with a 6-character code
+### ⬇️ Downloads that finish
+- **Many connections** per file; every piece is checked, so a resumed file is **never corrupted**
+- Survives **Wi-Fi drops, sleep and restarts** - it continues where it stopped
+- 🔐 **Checksums**: paste the publisher's, or dlus finds their checksum file itself; every file gets a **SHA-256**, a **Verify** button and the macOS quarantine flag
+- Queue, folders, speed limit, schedule, live speed graph
+- **Watch a film while it is still downloading**
 
-**💬 Subtitles**
-- Search online: every subtitle gets a match score for your exact release (★ 100 % = made for your very file), best first; add your own files too
-- **Auto sync** from the film's speech: fixes shifts, wrong frame rates (25 vs 23.976 fps) and subtitles made for another cut - and tells you when a subtitle belongs to another version
+</td>
+<td width="50%" valign="top">
+
+### 📺 Your LG TV (webOS)
+- **Play on TV** with LG's own player - the original 4K HDR file, untouched, with your subtitle
+- Or the **dlus player** on the TV: full-screen glass player with seek previews, resume, quality and sound choices, subtitle styles, one-press switch to LG's player
+- **Remote control** on the Mac laid out like the LG Magic Remote: apps, inputs, typing, volume, screen off, picture mode
+- **TV home page**: your films and shared folders on the TV
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 💬 Subtitles
+- **Search online**: every subtitle gets a match score for your exact release (**★ 100 %** = made for your very file)
+- **Auto sync** from the film's speech: fixes shifts, wrong frame rates (25 vs 23.976 fps) and other cuts - and tells you when a subtitle belongs to another version
 - One look (font, size, colour) for every film, Persian / Arabic fonts included
 
-**🎞️ Every format**
-- MP4, MKV, WebM, AVI, MOV - H.264, HEVC, VP9, AV1, ProRes: converted only when a player cannot play it, never touched otherwise
-- Optional *Enhance* for low-resolution videos (cleaned up and upscaled to 1080p)
+</td>
+<td width="50%" valign="top">
 
-**🌐 Your network**
-- DLNA server, folder sharing, an HTTP proxy (all off until you turn them on)
-- **VPN router** (experimental): send chosen devices - like the TV - through your Mac's VPN, with a guided setup and a live check
+### 🎞️ Every format · 🌐 Your network
+- MP4, MKV, WebM, AVI, MOV - H.264, HEVC, VP9, AV1, ProRes: **converted only when a player cannot play it**
+- Optional ✨ *Enhance* for low-resolution videos (upscaled to 1080p)
+- DLNA server, folder sharing, an HTTP proxy - **all off until you turn them on, every device approved by you**
+- 🛡️ **VPN router** *(experimental)*: send chosen devices - like the TV - through your Mac's VPN
+
+</td>
+</tr>
+</table>
 
 ## 📸 Screenshots
 
@@ -85,23 +102,39 @@ So I wrote a small script that downloads in many parts and checks every piece. T
 ## 📦 Install
 
 1. Download **`dlus-<version>.dmg`** from [Releases](https://github.com/amahbadi/dlus/releases/latest)
-2. Drag **dlus** onto **Applications** and open it (first time: right-click &rarr; **Open**, the app is not notarized)
+2. Drag **dlus** onto **Applications** and open it
 3. dlus opens in its own window and keeps working in the background, also when the window is closed
 
-**Needs:** macOS 12+, Python 3 (`xcode-select --install` if missing). For TV streaming and subtitles: [ffmpeg](https://ffmpeg.org) (`brew install ffmpeg`).
+> [!IMPORTANT]
+> **First start:** right-click **dlus** &rarr; **Open** &rarr; **Open** (the app is not notarized). Only once.
+
+| Needs | |
+|---|---|
+| 🍏 macOS | 12 or newer (Apple silicon or Intel) |
+| 🐍 Python 3 | built in with the developer tools: `xcode-select --install` |
+| 🎬 [ffmpeg](https://ffmpeg.org) | for TV streaming, subtitles and previews: `brew install ffmpeg` |
+
+> [!TIP]
+> **Check your download** - every release is built by GitHub Actions and signed:
+> ```sh
+> gh attestation verify dlus-<version>.dmg --repo amahbadi/dlus
+> ```
 
 ## 🚀 Quick start
 
 | I want to | Do this |
 |---|---|
-| ⬇️ download something | paste a link anywhere in dlus (or **⌘N**) |
+| ⬇️ download something | paste a link anywhere in dlus (<kbd>⌘</kbd><kbd>V</kbd>) or **New download** (<kbd>⌘</kbd><kbd>N</kbd>) |
+| 🔐 check a downloaded file | open it &rarr; **Integrity** &rarr; paste the publisher's checksum &rarr; **Verify** |
 | 💻 watch it on the Mac | **Play** on the file - it opens in its own player window |
 | 📺 watch it on the TV | **On TV** &rarr; **LG player · best picture** |
 | 💬 get subtitles in sync | in the player: **Subtitles &rarr; Find online**, then **Auto sync** |
 | 🎮 control the TV | **TV & remote** |
 | 🛡️ put the TV on my VPN | **VPN router &rarr; Connect a device** |
+| ✅ let a new TV or phone in | press **Allow** on the banner that appears in dlus |
 
-The full guide - every feature, setting and shortcut - is in **[docs/USER-GUIDE.md](docs/USER-GUIDE.md)**.
+> [!NOTE]
+> 📖 The full guide - every feature, setting and shortcut - is in **[docs/USER-GUIDE.md](docs/USER-GUIDE.md)**.
 
 ## 🧪 Tested with
 
@@ -113,7 +146,8 @@ The full guide - every feature, setting and shortcut - is in **[docs/USER-GUIDE.
 | 📶 **Networks** | home Wi-Fi and an iPhone hotspot |
 | 🎞️ **Formats** | 4K HDR10 HEVC MKV with DTS-HD MA (88 GB), plus test clips in MP4 / WebM / AVI / MKV (AV1) / MOV (ProRes) |
 
-Other LG webOS TVs (2018 and newer) should work - the remote and the player use LG's standard interfaces - but they have not been tested. Intel Macs get the same universal app, also untested so far. Reports are welcome in [Issues](https://github.com/amahbadi/dlus/issues).
+> [!NOTE]
+> Other LG webOS TVs (2018 and newer) should work - the remote and the player use LG's standard interfaces - but they have not been tested. Intel Macs get the same universal app, also untested so far. Reports are welcome in [Issues](https://github.com/amahbadi/dlus/issues).
 
 ## 🔒 Privacy and security
 
@@ -123,14 +157,19 @@ Other LG webOS TVs (2018 and newer) should work - the remote and the player use 
 - 🔑 The dlus window talks to a service on `127.0.0.1` that needs a key only your macOS account can read; other users and websites cannot control it
 - 🧱 The VPN router's root helper sits in a root-only folder, accepts only checked commands, and lets **only your chosen devices** route through the Mac
 - 📺 The LG TV connection is pinned to the TV's certificate - no listening in
-- 🤖 Every change is scanned: Bandit, Semgrep, CodeQL, Gitleaks, ShellCheck, security tests; releases carry a signed build provenance
+- 🤖 Every change is scanned: Bandit, Semgrep, CodeQL, Gitleaks, ShellCheck, fuzzing, security tests; releases carry a signed build provenance
 - 🙈 No accounts, no telemetry; dlus talks to the internet only for your downloads and subtitle searches
 
-Details: [SECURITY.md](SECURITY.md) · VPN router: [docs/VPN-ROUTER.md](docs/VPN-ROUTER.md)
+> [!TIP]
+> 🔎 How each of these works, and how to check them yourself: **[SECURITY.md](SECURITY.md)** · VPN router: [docs/VPN-ROUTER.md](docs/VPN-ROUTER.md). Found a problem? **[Report it privately](https://github.com/amahbadi/dlus/security/advisories/new)**.
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome - see [CONTRIBUTING.md](CONTRIBUTING.md). Every change goes through a pull request and a review.
+Issues and pull requests are welcome - see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+```text
+fork → branch → pull request → 🤖 security checks comment on it → fix until ✅ → maintainer review → merge
+```
 
 ## 🛠️ Build from source
 
@@ -139,7 +178,14 @@ python3 dlus.py              # run it directly: http://127.0.0.1:8642/
 bash macos/build_dmg.sh      # dist/dlus.app + dist/dlus-<version>.dmg (universal, ad-hoc signed)
 ```
 
-dlus is one Python file using only the standard library, plus `curl`, `ffmpeg` and a small Swift window (`macos/main.swift`). Every push is checked by [CI](.github/workflows/ci.yml); pushing a tag `v*` builds the DMG and publishes a release ([release.yml](.github/workflows/release.yml)).
+dlus is one Python file using only the standard library, plus `curl`, `ffmpeg` and a small Swift window (`macos/main.swift`).
+
+| Workflow | Runs |
+|---|---|
+| [CI](.github/workflows/ci.yml) | every push and PR: compile, JavaScript check, security tests, firewall rules in macOS `pf`, Swift build |
+| [Security](.github/workflows/security.yml) | every push, PR and weekly: Bandit, Semgrep, Gitleaks, ShellCheck, fuzzing |
+| [CodeQL](.github/workflows/codeql.yml) · [Scorecard](.github/workflows/scorecard.yml) | GitHub code analysis and the OpenSSF rating |
+| [Release](.github/workflows/release.yml) | a tag `v*`: builds the DMG, signs its provenance, publishes it |
 
 ## 💜 Thanks
 

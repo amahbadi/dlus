@@ -1,8 +1,9 @@
-# Roadmap
+<h1 align="center">🗺️ Roadmap</h1>
 
-Order: finish macOS completely (security, releases), then Linux.
+> [!NOTE]
+> Order: finish **macOS** completely (security, releases), then **Linux**.
 
-## 1. macOS - close out
+## 🍏 1. macOS - close out
 
 - [x] Security review and fixes (7.23): device approval, activity log, checksums + Verify, quarantine, https-only redirects, root helper in a root-only folder, only listed devices may route, TV certificate pinning, playlist-disguise guard, zip-bomb limits, safe shared folders
 - [x] Security pipeline: Bandit, Semgrep, CodeQL, Gitleaks, ShellCheck, security tests, pf rule check on macOS; pull-request feedback comment + labels; pinned actions + Dependabot
@@ -12,10 +13,10 @@ Order: finish macOS completely (security, releases), then Linux.
 - [x] No known-vulnerable packages in the pipeline (semgrep from a pinned container image)
 - [ ] OpenSSF Best Practices badge - a self-assessment form at [bestpractices.dev](https://www.bestpractices.dev), filled in by the maintainer (sign in with GitHub)
 - [ ] Developer ID signing + Apple notarization: removes the "unidentified developer" warning. Needs a paid Apple Developer Program membership (maintainer decision); then the release workflow signs and notarizes with secrets
-- [ ] Mac App Store - **not planned**, see below
-- [ ] iPad / iPhone - **not planned**, see below
+- [ ] ~~Mac App Store~~ - **not planned** (maintainer decision), see below
+- [ ] ~~iPad / iPhone~~ - **not planned**, see below
 
-### Why not the Mac App Store (yet)
+### 🛒 Why not the Mac App Store
 
 The Mac App Store requires every app to run in the App Sandbox and follow the App Review Guidelines. dlus breaks several rules by design:
 
@@ -29,11 +30,11 @@ The Mac App Store requires every app to run in the App Sandbox and follow the Ap
 
 A store version would be a different, reduced app (no VPN router, bundled ffmpeg, no subtitle scraping, Swift or bundled Python). Possible later as "dlus Lite"; the DMG stays the full version.
 
-### Why not iPad / iPhone
+### 📱 Why not iPad / iPhone
 
 dlus is a server: it downloads, converts and streams from the Mac. An iPad cannot keep a server running in the background, and the iPad already uses dlus today - open the stream links or the TV home page in Safari, or add it to the home screen.
 
-## 2. Linux (after macOS is closed)
+## 🐧 2. Linux (after macOS is closed)
 
 Goal: `dlus_<version>_all.deb` for Ubuntu 22.04+ / Debian 12+, built and tested in the pipeline, published with every release.
 

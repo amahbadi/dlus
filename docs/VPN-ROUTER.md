@@ -1,10 +1,11 @@
-# VPN router
+<h1 align="center">🛡️ VPN router</h1>
 
-Share your Mac's VPN with devices that cannot run a VPN themselves: a smart TV, a game console, an old tablet. You choose per device: **Tunnel** (through the VPN) or **Direct**.
+<p align="center">Share your Mac's VPN with devices that cannot run a VPN themselves:<br>a smart TV 📺, a game console 🎮, an old tablet 📱.<br>You choose per device: <b>Tunnel</b> (through the VPN) or <b>Direct</b>.</p>
 
-> **Status: experimental.** It changes your Mac's firewall and IP forwarding. Read *Safety* below before you turn it on.
+> [!WARNING]
+> **Experimental.** It changes your Mac's firewall and IP forwarding. Read **[Safety](#-safety)** before you turn it on.
 
-## How it works
+## ⚙️ How it works
 
 ```
 TV  ──Wi-Fi──▶  Mac (gateway)  ──▶  your VPN tunnel (utunX)  ──▶  internet
@@ -14,31 +15,34 @@ TV  ──Wi-Fi──▶  Mac (gateway)  ──▶  your VPN tunnel (utunX)  ─
 2. macOS forwards the device's traffic. dlus adds firewall rules (NAT) so the answers come back.
 3. The traffic follows **the same route as the Mac's own traffic**. dlus does not pick a VPN: whatever VPN carries your Mac's internet also carries the device.
 
-Because of 3, dlus works with any VPN that sends **all** of the Mac's traffic through it, whatever the brand or protocol.
+> [!NOTE]
+> Because of 3, dlus works with **any VPN that sends all of the Mac's traffic through it**, whatever the brand or protocol.
 
-## Supported VPNs
+## ✅ Supported VPNs
 
 | VPN | Works | What to set |
 |---|---|---|
-| WireGuard (app or `wg-quick`) | yes | `AllowedIPs = 0.0.0.0/0` (the default "full tunnel") |
-| OpenVPN: Tunnelblick, Viscosity, OpenVPN Connect | yes | the profile must use `redirect-gateway def1` ("route all traffic") |
-| Cisco AnyConnect / Secure Client | yes, if your VPN allows full tunnel | split tunnel: see below |
-| Windscribe, Proton, Nord, Express, Surfshark, Mullvad, PIA, IVPN, Cloudflare WARP | yes | default settings (they are full tunnel). Turn **off** "allow LAN traffic" blocks / firewall modes that block local devices, if the app has one |
-| V2Box, Hiddify, Clash, sing-box, Shadowrocket, FoXray (proxy apps) | yes, in **TUN / system-wide / enhanced** mode | in plain "system proxy" mode there is no tunnel, so nothing to share |
-| FortiClient, GlobalProtect, IKEv2 profiles in macOS settings | yes, if full tunnel | split tunnel: see below |
-| NetBird, Tailscale, ZeroTier (mesh VPNs) | no, by design | they connect private networks; they are not an internet exit (unless you use an exit node, which then counts as a full tunnel) |
+| WireGuard (app or `wg-quick`) | ✅ yes | `AllowedIPs = 0.0.0.0/0` (the default "full tunnel") |
+| OpenVPN: Tunnelblick, Viscosity, OpenVPN Connect | ✅ yes | the profile must use `redirect-gateway def1` ("route all traffic") |
+| Cisco AnyConnect / Secure Client | ✅ yes, if your VPN allows full tunnel | split tunnel: see below |
+| Windscribe, Proton, Nord, Express, Surfshark, Mullvad, PIA, IVPN, Cloudflare WARP | ✅ yes | default settings (they are full tunnel). Turn **off** "allow LAN traffic" blocks / firewall modes that block local devices, if the app has one |
+| V2Box, Hiddify, Clash, sing-box, Shadowrocket, FoXray (proxy apps) | ✅ in **TUN / system-wide / enhanced** mode | in plain "system proxy" mode there is no tunnel, so nothing to share |
+| FortiClient, GlobalProtect, IKEv2 profiles in macOS settings | ✅ yes, if full tunnel | split tunnel: see below |
+| NetBird, Tailscale, ZeroTier (mesh VPNs) | ❌ no, by design | they connect private networks; they are not an internet exit (unless you use an exit node, which then counts as a full tunnel) |
 
-The **VPN** card on the VPN router page shows which interface carries the Mac's internet right now, for example *Windscribe · utun6*.
+> [!TIP]
+> The **VPN** card on the VPN router page shows which interface carries the Mac's internet right now, for example *Windscribe · utun6*.
 
-### Split tunnel ("only some networks go through the VPN")
+### 🔀 Split tunnel ("only some networks go through the VPN")
 
 Some VPNs send only certain networks through the tunnel (split tunnel). dlus shows such a tunnel with **Route everything through it**. That adds two routes, `0.0.0.0/1` and `128.0.0.0/1`, into the tunnel. They win over the normal default route without removing it.
 
 - dlus checks the internet straight away. If it stops working, the routes are removed again by themselves.
 - The routes are also removed when you press **undo**, turn the router off, disconnect the VPN, or restart the Mac.
-- Whoever runs your VPN may not want all your traffic going through it. Ask first.
+> [!CAUTION]
+> Whoever runs your VPN may not want all your traffic going through it. Ask first.
 
-## Install
+## 📦 Install
 
 1. Open **dlus → VPN router**.
 2. Press **Install helper**. macOS asks for your administrator password; the output is shown on the page.
@@ -59,7 +63,7 @@ sudo bash /Applications/dlus.app/Contents/Resources/gateway/install.sh
 
 When dlus updates the helper, the page shows **Update helper**. Same password prompt.
 
-## Connect a device
+## 🔌 Connect a device
 
 Easiest: **VPN router → Connect a device to the VPN → Start**, or the **VPN** button next to your TV. dlus:
 
@@ -80,15 +84,16 @@ On the device (example LG webOS): *Settings → General → Network → Wi-Fi Co
 | Gateway / Router | **the Mac's address** |
 | DNS | `1.1.1.1` |
 
-No app can change a TV's network settings for you; you type them once. If the Mac later gets a different address, update the gateway on the device.
+> [!NOTE]
+> No app can change a TV's network settings for you; you type them once. If the Mac later gets a different address, update the gateway on the device.
 
-## Tunnel, Direct, kill switch
+## 🚦 Tunnel, Direct, kill switch
 
 - **Tunnel:** the device's traffic goes through the VPN. With the **kill switch** on (default), the device gets no internet while the VPN is down, so nothing leaks.
 - **Direct:** keep that device's network on *Automatic*. It uses your normal router and never touches the Mac.
 - **DNS:** tunnelled devices' DNS also goes through the VPN, so filtered DNS cannot block sites.
 
-## Safety
+## 🧯 Safety
 
 - **Firewall:** all rules live in their own anchor, `com.apple/dlus`. `/etc/pf.conf` and your other rules are never edited.
 - **Only your devices:** a device that is not on the Tunnel or Direct list cannot use the Mac as a router. If someone on your network points their gateway at the Mac, their traffic is dropped, so they cannot reach the VPN's private networks through it.
@@ -100,14 +105,14 @@ No app can change a TV's network settings for you; you type them once. If the Ma
 - **IPv6:** dlus routes IPv4. If your router gives devices IPv6, a device can reach IPv6 sites past the VPN. Turn off IPv6 on the device (on LG TVs: *Network → IPv6*, on some models) or on your router.
 - **Uninstall:** VPN router → **Remove helper**, or `sudo bash /Applications/dlus.app/Contents/Resources/gateway/uninstall.sh`.
 
-## Troubleshooting
+## 🩺 Troubleshooting
 
-Press **Check routes** on the VPN router page. It shows:
-
-- the Mac's internet route
-- the VPN tunnels it found
-- the VPN apps that are running
-- the helper's state, including forwarding, firewall rules and the connections of each device
+> [!TIP]
+> Press **Check routes** on the VPN router page. It shows:
+> - the Mac's internet route
+> - the VPN tunnels it found
+> - the VPN apps that are running
+> - the helper's state, including forwarding, firewall rules and the connections of each device
 
 | Symptom | Likely cause |
 |---|---|

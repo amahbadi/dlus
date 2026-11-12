@@ -3,6 +3,11 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch: # rebuild an existing release from its tag (adds signature + provenance to older releases)
+    inputs:
+      tag:
+        description: "release tag to rebuild, e.g. v7.22"
+        required: true
 
 permissions:
   contents: read
@@ -15,15 +20,22 @@ jobs:
       id-token: write # sign the build provenance
       attestations: write
     steps:
+      - name: Only a release tag can be rebuilt
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ inputs.tag }}
+        run: '[[ "$TAG" =~ ^v[0-9]+(\.[0-9]+)+$ ]] || { echo "not a release tag: $TAG"; exit 1; }'
+        shell: bash
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
       - name: Checks
         run: |
           python3 -m py_compile dlus.py
           python3 macos/check_names.py dlus.py
           python3 macos/check_js.py dlus.py
-          python3 -m unittest discover -s tests
+          if [ -d tests ]; then python3 -m unittest discover -s tests; fi  # older tags have no tests yet
       - name: Build dlus.app and DMG (universal, ad-hoc signed)
         run: bash macos/build_dmg.sh
       - name: Checksums
@@ -45,9 +57,11 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: ${{ github.event_name == 'push' }}
+          overwrite_files: true
           files: |
             dist/dlus-*.dmg
             dist/dlus-*.dmg.sigstore.json
             dist/dlus-*.dmg.intoto.jsonl
             dist/SHA256SUMS
-          generate_release_notes: true
