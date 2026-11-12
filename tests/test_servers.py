@@ -149,6 +149,29 @@ class Servers(unittest.TestCase):
         st, data, r = self.req("HEAD", "/stream/%s/x?ik=%s" % (did, mk), key=False)
         self.assertEqual((st, r.getheader("Content-Length")), (200, str(len(self.body))))
 
+    def test_api_edges(self):
+        self.assertEqual(self.req("GET", "/", key=False)[0], 401)  # locked page without the key
+        self.assertEqual(self.req("GET", "/api/d/nope")[0], 404)
+        self.assertEqual(self.req("GET", "/api/subs/nope")[0], 404)
+        self.assertEqual(self.req("GET", "/api/subs/%s/autosync?sid=nope" % self.d.r["id"])[0], 200)
+        self.assertEqual(self.req("GET", "/sub/%s/nope.vtt?ik=%s" % (self.d.r["id"], self.m.media_key), key=False)[0], 404)
+        self.assertEqual(self.req("GET", "/api/browse?i=99&rel=")[0], 404)
+        self.assertEqual(self.req("GET", "/api/probe/nope")[0], 404)
+        self.assertEqual(self.req("GET", "/no/such/page")[0], 404)
+        num, mk = self.d.r["num"], self.m.media_key
+        st, data, _ = self.req("GET", "/s/%d?ik=%s" % (num, mk), headers={"Range": "bytes=0-9"}, key=False)
+        self.assertEqual((st, data), (206, self.body[:10]))
+        self.assertEqual(self.req("GET", "/s/99999?ik=%s" % mk, key=False)[0], 404)
+        self.assertEqual(self.req("GET", "/stream/nope/x?ik=%s" % mk, key=False)[0], 404)
+        os.makedirs(dlus.fonts_dir(), exist_ok=True)
+        with open(os.path.join(dlus.fonts_dir(), "UiFont.woff2"), "wb") as f:
+            f.write(b"wOF2" + b"0" * 50)
+        self.assertEqual(self.req("GET", "/fonts/UiFont.woff2")[0], 200)
+        for path, body, want in (("/api/tvs/cast", {"id": "nope"}, 404), ("/api/tvs/ctl/stop", {}, 400), ("/api/tv/nope/status", {}, 400),
+                                 ("/api/gw/full", {"on": False}, 200), ("/api/nothing", {}, 404),
+                                 ("/api/add", {"urls": "http://127.0.0.1:9/a http://127.0.0.1:9/a"}, 200)):
+            self.assertEqual(self.api(path, body)[0], want, path)
+
     def test_settings_roundtrip(self):
         st, _ = self.api("/api/settings", {"limit_mb": 3, "max_active": 2, "sched_on": False, "notify": False})
         self.assertEqual(st, 200)

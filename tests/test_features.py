@@ -130,6 +130,59 @@ class AutoSync(unittest.TestCase):
         self.assertAlmostEqual(delay, 2.0, delta=0.3, msg=res)
 
 
+@unittest.skipUnless(FFMPEG, "ffmpeg is not installed")
+class AutoSyncCases(unittest.TestCase):
+    """the three hard cases: another frame rate, another cut of the film, and a subtitle for another film"""
+
+    def film(self, speech, dur=100):
+        m = manager()
+        expr = "+".join("between(t,%.2f,%.2f)" % (x, x + 0.8) for x in speech if x < dur - 1)
+        vid = os.path.join(m.settings["base_dir"], "Video", "Case.mkv")
+        os.makedirs(os.path.dirname(vid), exist_ok=True)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=160x90:d=%d:r=10" % dur,
+                        "-f", "lavfi", "-i", "aevalsrc='(%s)*sin(2*PI*700*t)':s=16000:d=%d" % (expr, dur),
+                        "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-ac", "2", vid], check=True, timeout=180)
+        return m, m.import_local(vid)
+
+    def times(self, seed, end=90):
+        rnd, out, t = random.Random(seed), [], 3.0
+        while t < end:
+            out.append(round(t, 2))
+            t += rnd.uniform(1.3, 3.5)
+        return out
+
+    def sync(self, m, d, subs):
+        sid = m.subs_add(d, "case.srt", srt(subs).encode())[0]["sid"]
+        end, res = time.time() + 180, {}
+        while time.time() < end:
+            res = m.subs_action(d, "autosync", {"sid": sid}) or {}
+            if res.get("verdict"):
+                return res
+            time.sleep(1)
+        return res
+
+    def test_other_frame_rate(self):  # a subtitle made for 25 fps, the film runs at 23.976 fps
+        subs = self.times(11, 85)
+        m, d = self.film([x * 25 / 23.976 for x in subs])
+        res = self.sync(m, d, subs)
+        self.assertEqual(res.get("verdict"), "fits", res)
+        self.assertAlmostEqual(float(d.r.get("sub_scale") or 1), 25 / 23.976, delta=0.01)
+
+    def test_other_cut(self):  # the second half of the film has 6 s more (an extra scene)
+        subs = self.times(21, 90)
+        m, d = self.film([x if x < 45 else x + 6 for x in subs])
+        res = self.sync(m, d, subs)
+        self.assertIn(res.get("verdict"), ("sections", "fits"), res)
+        if res.get("verdict") == "sections":
+            self.assertTrue(res["applied"])
+
+    def test_subtitle_for_another_film(self):  # 7.28: with too few lines per section every subtitle "fit"
+        m, d = self.film(self.times(31, 90))
+        res = self.sync(m, d, self.times(99, 90))
+        self.assertEqual(res.get("verdict"), "nomatch", res)
+        self.assertFalse(res.get("applied"))
+
+
 class Fonts(unittest.TestCase):
     def test_install_upload_and_remove(self):
         m = manager()

@@ -3730,7 +3730,8 @@ class Manager:
                 if b <= 0:
                     continue
                 def f(x):
-                    return "%02d:%02d:%02d.%03d" % (x // 3600, x % 3600 // 60, x % 60, round(x % 1 * 1000) % 1000)
+                    ms = round(max(0, x) * 1000)  # whole milliseconds first, so 4.9996 s is 00:00:05.000
+                    return "%02d:%02d:%02d.%03d" % (ms // 3600000, ms // 60000 % 60, ms // 1000 % 60, ms % 1000)
                 lines.append("%s --> %s\n%s" % (f(max(0, a)), f(b), blk[mm.end():].strip("\n")))
             wr(path, "WEBVTT\n\n" + "\n\n".join(lines) + "\n")
             t["fixed"] = "sections"
@@ -5133,6 +5134,8 @@ def speech_sync(cues, speech):
             secs.append({"from": part[0][0], "i0": q * len(cues) // k, "off": o, "conf": c, "ok": c >= 3.0})
     good = [x for x in secs if x["ok"]]
     res = {"offset": off, "scale": sc, "confidence": conf, "cover": round(cover(cues, off, sc), 3), "sections": secs}
+    if len(secs) < 3:  # short video or sparse subtitle: too few parts to vote - the whole-film fit must be clearly above chance
+        return dict(res, verdict="fits" if conf >= 4.5 else "nomatch")
     if len(good) >= 0.75 * len(secs) and sum(1 for x in good if abs(x["off"] - off) <= 0.5) >= 0.75 * len(good):
         return dict(res, verdict="fits")
     # runs of neighbouring sections that agree with each other (another cut: a jump between parts)
