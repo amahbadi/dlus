@@ -7,8 +7,9 @@
 
 ## Unreleased
 
+- 🐛 Proxy: a malformed CONNECT request is answered with 400 instead of crashing its connection handler
 - 🐛 Styled subtitles (LG player): a line could start up to a second early when its time rounded up (same fix as 7.27, for the styled format)
-- 🧪 Test suite for the download engine, the local API, the home-network server and media (ffmpeg): coverage 17 % → 55 %
+- 🧪 Test suite for the download engine, the local API, the home-network server and media (ffmpeg): coverage 17 % → 66 % (incl. a fake LG TV and the proxy end to end)
 - 🔔 A device asking for access is named by its network name (e.g. *iPad*, *PS5*) instead of "Unknown device" when dlus knows it
 - 🧪 Tests never send real macOS notifications
 

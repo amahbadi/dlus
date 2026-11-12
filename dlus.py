@@ -1252,7 +1252,10 @@ class ProxyServer:
             return
         if method == "CONNECT":
             host, _, port = target.rpartition(":")
-            port = int(port or 443)
+            if not port.isdigit():  # "CONNECT host:abc" - answer, do not crash the connection
+                conn.sendall(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                return
+            port = int(port)
         else:
             u = urllib.parse.urlsplit(target)
             if u.scheme != "http" or not u.hostname:
