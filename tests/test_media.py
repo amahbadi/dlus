@@ -107,6 +107,17 @@ class Media(unittest.TestCase):
             self.assertEqual(st, 200, path)
             self.assertGreater(len(data), 100, path)
 
+    def test_every_quality_and_sound_mode(self):
+        num = self.d.r["num"]
+        for q in ("high", "saver", "1080", "1080low", "enhance"):
+            st, data = self.get("/%s/%d.mp4?t=1&q=%s" % (self.tok, num, q), limit=2048)
+            self.assertEqual(st, 200, q)
+        for snd in ("dialog", "night", "surround", "original"):
+            st, data = self.get("/%s/%d.mp4?t=1&snd=%s&ch=2" % (self.tok, num, snd), limit=2048)
+            self.assertEqual(st, 200, snd)
+        st, data = self.get("/stream/%s/x?ik=%s&compat=1&t=1" % (self.d.r["id"], self.m.media_key), lan=False, limit=2048)
+        self.assertEqual(st, 200)
+
     def test_hls_session(self):
         st, data = self.get("/%s/%d-hls?t=0" % (self.tok, self.d.r["num"]))
         self.assertEqual(st, 200, data)

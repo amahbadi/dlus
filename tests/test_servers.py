@@ -285,6 +285,12 @@ class Servers(unittest.TestCase):
                     '<u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1"><ObjectID>%s</ObjectID>'
                     '<BrowseFlag>BrowseDirectChildren</BrowseFlag><StartingIndex>0</StartingIndex><RequestedCount>50</RequestedCount>'
                     '</u:Browse></s:Body></s:Envelope>')
+            for act, payload in (("GetSearchCapabilities", ""), ("GetSortCapabilities", ""), ("GetSystemUpdateID", ""),
+                                 ("Browse", "<ObjectID>dl</ObjectID><BrowseFlag>BrowseMetadata</BrowseFlag>")):
+                c = http.client.HTTPConnection("127.0.0.1", self.m.settings["lan_port"], timeout=30)
+                c.request("POST", "/dlna/cds/ctl", ("<s:Envelope><s:Body><u:%s>%s</u:%s></s:Body></s:Envelope>" % (act, payload, act)).encode(),
+                          {"SOAPACTION": '"urn:schemas-upnp-org:service:ContentDirectory:1#%s"' % act})
+                self.assertIn(c.getresponse().status, (200, 500), act)
             for oid in ("0", "dl", "f0", "f0:Series"):
                 c = http.client.HTTPConnection("127.0.0.1", self.m.settings["lan_port"], timeout=30)
                 c.request("POST", "/dlna/cds/ctl", (body % oid).encode(), {"SOAPACTION": '"urn:schemas-upnp-org:service:ContentDirectory:1#Browse"',
