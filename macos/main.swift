@@ -52,9 +52,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         web.setValue(false, forKey: "drawsBackground")  // no white flash while the page loads
         web.customUserAgent = nil
 
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1320, height: 860),
-                          styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                          backing: .buffered, defer: false)
+        window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1320, height: 860),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false)
         window.title = "dlus"
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1)
@@ -113,7 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             p.arguments = [setup.path]
             let pipe = Pipe()
             p.standardError = pipe
-            do { try p.run() } catch { DispatchQueue.main.async { self.fail("Could not start dlus: \(error.localizedDescription)") }; return }
+            do { try p.run() } catch {
+                DispatchQueue.main.async { self.fail("Could not start dlus: \(error.localizedDescription)") }
+                return
+            }
             p.waitUntilExit()
             let err = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             if p.terminationStatus != 0 {
@@ -154,7 +158,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         var browser = false
         URLSession.shared.dataTask(with: req) { data, _, _ in
             if let data = data, let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let st = j["settings"] as? [String: Any], (st["ui_open"] as? String) == "browser" { browser = true }
+                let st = j["settings"] as? [String: Any], (st["ui_open"] as? String) == "browser"
+            {
+                browser = true
+            }
             sem.signal()
         }.resume()
         _ = sem.wait(timeout: .now() + 3)
@@ -196,7 +203,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             req.setValue("dlus_k=" + uiKey(), forHTTPHeaderField: "Cookie")
             URLSession.shared.dataTask(with: req) { data, _, _ in
                 guard let data = data, let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let items = j["items"] as? [[String: Any]] else { return }
+                    let items = j["items"] as? [[String: Any]]
+                else { return }
                 let n = items.filter { ($0["status"] as? String) == "downloading" }.count
                 DispatchQueue.main.async { NSApp.dockTile.badgeLabel = n > 0 ? String(n) : nil }
             }.resume()
@@ -206,8 +214,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     // ---------------------------------------------------------------- web view behaviour
     func webView(_ w: WKWebView, didFinish nav: WKNavigation!) {
         if isLocal(w.url) {
-            NSAnimationContext.runAnimationGroup({ c in c.duration = 0.25; self.cover.animator().alphaValue = 0 },
-                                                 completionHandler: { self.cover.isHidden = true; self.cover.alphaValue = 1 })
+            NSAnimationContext.runAnimationGroup(
+                { c in
+                    c.duration = 0.25
+                    self.cover.animator().alphaValue = 0
+                },
+                completionHandler: {
+                    self.cover.isHidden = true
+                    self.cover.alphaValue = 1
+                })
         }
     }
 
@@ -236,16 +251,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     // target=_blank / window.open
     var players: [NSWindow] = []
 
-    func webView(_ w: WKWebView, createWebViewWith cfg: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+    func webView(_ w: WKWebView, createWebViewWith cfg: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView?
+    {
         guard let u = action.request.url else { return nil }
-        if !isLocal(u) { NSWorkspace.shared.open(u); return nil }
-        if u.port != 8644 { w.load(action.request); return nil }
+        if !isLocal(u) {
+            NSWorkspace.shared.open(u)
+            return nil
+        }
+        if u.port != 8644 {
+            w.load(action.request)
+            return nil
+        }
         // the film plays in its own window: closing it (red button / Cmd-W / Esc in the player) returns to dlus
         let pv = WKWebView(frame: .zero, configuration: cfg)
         pv.navigationDelegate = self
         pv.uiDelegate = self
         pv.setValue(false, forKey: "drawsBackground")
-        let pw = NSWindow(contentRect: window.frame, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        let pw = NSWindow(
+            contentRect: window.frame, styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         pw.title = "dlus player"
         pw.titlebarAppearsTransparent = true
         pw.titleVisibility = .hidden
@@ -268,34 +291,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func webViewDidClose(_ w: WKWebView) { w.window?.performClose(nil) }
 
     // the TV's app icons come from its own self-signed HTTPS server on the home network
-    func webView(_ w: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    func webView(
+        _ w: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
         // only the TV's own service port on the home network - never internet sites
         if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-           challenge.protectionSpace.port == 3001, isPrivateLAN(challenge.protectionSpace.host), let t = challenge.protectionSpace.serverTrust {
+            challenge.protectionSpace.port == 3001, isPrivateLAN(challenge.protectionSpace.host), let t = challenge.protectionSpace.serverTrust
+        {
             return completionHandler(.useCredential, URLCredential(trust: t))
         }
         completionHandler(.performDefaultHandling, nil)
     }
 
     func webView(_ w: WKWebView, runJavaScriptAlertPanelWithMessage msg: String, initiatedByFrame f: WKFrameInfo, completionHandler: @escaping () -> Void) {
-        let a = NSAlert(); a.messageText = msg; a.addButton(withTitle: "OK")
+        let a = NSAlert()
+        a.messageText = msg
+        a.addButton(withTitle: "OK")
         a.beginSheetModal(for: window) { _ in completionHandler() }
     }
 
-    func webView(_ w: WKWebView, runJavaScriptConfirmPanelWithMessage msg: String, initiatedByFrame f: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
-        let a = NSAlert(); a.messageText = msg; a.addButton(withTitle: "OK"); a.addButton(withTitle: "Cancel")
+    func webView(_ w: WKWebView, runJavaScriptConfirmPanelWithMessage msg: String, initiatedByFrame f: WKFrameInfo, completionHandler: @escaping (Bool) -> Void)
+    {
+        let a = NSAlert()
+        a.messageText = msg
+        a.addButton(withTitle: "OK")
+        a.addButton(withTitle: "Cancel")
         a.beginSheetModal(for: window) { r in completionHandler(r == .alertFirstButtonReturn) }
     }
 
-    func webView(_ w: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame f: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
-        let a = NSAlert(); a.messageText = prompt; a.addButton(withTitle: "OK"); a.addButton(withTitle: "Cancel")
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24)); field.stringValue = defaultText ?? ""
+    func webView(
+        _ w: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame f: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void
+    ) {
+        let a = NSAlert()
+        a.messageText = prompt
+        a.addButton(withTitle: "OK")
+        a.addButton(withTitle: "Cancel")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        field.stringValue = defaultText ?? ""
         a.accessoryView = field
         a.window.initialFirstResponder = field
         a.beginSheetModal(for: window) { r in completionHandler(r == .alertFirstButtonReturn ? field.stringValue : nil) }
     }
 
-    func webView(_ w: WKWebView, runOpenPanelWith params: WKOpenPanelParameters, initiatedByFrame f: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+    func webView(_ w: WKWebView, runOpenPanelWith params: WKOpenPanelParameters, initiatedByFrame f: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void)
+    {
         let p = NSOpenPanel()
         p.allowsMultipleSelection = params.allowsMultipleSelection
         p.canChooseDirectories = params.allowsDirectories
@@ -320,50 +361,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     @objc func stopAndQuit() {
         let a = NSAlert()
         a.messageText = "Stop dlus completely?"
-        a.informativeText = "Downloads pause and TVs can no longer play from this Mac until you open dlus again. (Quit only closes this window; dlus keeps working in the background.)"
-        a.addButton(withTitle: "Stop dlus"); a.addButton(withTitle: "Cancel")
+        a.informativeText =
+            "Downloads pause and TVs can no longer play from this Mac until you open dlus again. (Quit only closes this window; dlus keeps working in the background.)"
+        a.addButton(withTitle: "Stop dlus")
+        a.addButton(withTitle: "Cancel")
         guard a.runModal() == .alertFirstButtonReturn else { return }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         p.arguments = ["bootout", "gui/\(getuid())/com.dlus"]
-        try? p.run(); p.waitUntilExit()
+        try? p.run()
+        p.waitUntilExit()
         NSApp.terminate(nil)
     }
 
     func buildMenu() {
         let main = NSMenu()
         func sub(_ title: String, _ items: [NSMenuItem]) {
-            let it = NSMenuItem(); let m = NSMenu(title: title)
-            items.forEach { m.addItem($0) }
-            it.submenu = m; main.addItem(it)
+            let it = NSMenuItem()
+            let m = NSMenu(title: title)
+            for item in items { m.addItem(item) }
+            it.submenu = m
+            main.addItem(it)
         }
         func item(_ t: String, _ a: Selector?, _ k: String = "", _ mods: NSEvent.ModifierFlags = .command, target: AnyObject? = nil) -> NSMenuItem {
-            let i = NSMenuItem(title: t, action: a, keyEquivalent: k); i.keyEquivalentModifierMask = mods
+            let i = NSMenuItem(title: t, action: a, keyEquivalent: k)
+            i.keyEquivalentModifierMask = mods
             if let target = target { i.target = target }
             return i
         }
-        sub("dlus", [item("About dlus", #selector(NSApplication.orderFrontStandardAboutPanel(_:))), .separator(),
-                     item("Settings...", #selector(openSettings), ",", target: self), .separator(),
-                     item("Hide dlus", #selector(NSApplication.hide(_:)), "h"),
-                     item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
-                     item("Show All", #selector(NSApplication.unhideAllApplications(_:))), .separator(),
-                     item("Stop dlus Completely...", #selector(stopAndQuit), target: self),
-                     item("Quit dlus", #selector(NSApplication.terminate(_:)), "q")])
-        sub("File", [item("New Download...", #selector(newDownload), "n", target: self), .separator(),
-                     item("Close Window", #selector(NSWindow.performClose(_:)), "w")])
-        sub("Edit", [item("Undo", Selector(("undo:")), "z"), item("Redo", Selector(("redo:")), "z", [.command, .shift]), .separator(),
-                     item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"),
-                     item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
-                     item("Find in dlus", #selector(findInDlus), "f", target: self)])
-        let views: [(String, String)] = [("All Downloads", "all"), ("Active", "active"), ("Queue", "queued"), ("Finished", "done"), ("Library", "lib"),
-                                         ("Network & Storage", "net"), ("Devices & Viewers", "dev"), ("Sharing", "share"), ("VPN Router", "gw"), ("TV & Remote", "tv")]
-        sub("Go", views.enumerated().map { i, v in
-            let it = item(v.0, #selector(goView(_:)), String((i + 1) % 10), target: self); it.representedObject = v.1; return it })
-        sub("View", [item("Reload", #selector(reload), "r", target: self), item("Home", #selector(goHome), "h", [.command, .shift], target: self), .separator(),
-                     item("Actual Size", #selector(zoomReset), "0", target: self), item("Zoom In", #selector(zoomIn), "+", target: self),
-                     item("Zoom Out", #selector(zoomOut), "-", target: self), .separator(),
-                     item("Open in Browser", #selector(openInBrowser), "b", [.command, .option], target: self), .separator(),
-                     item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])])
+        sub(
+            "dlus",
+            [
+                item("About dlus", #selector(NSApplication.orderFrontStandardAboutPanel(_:))), .separator(),
+                item("Settings...", #selector(openSettings), ",", target: self), .separator(),
+                item("Hide dlus", #selector(NSApplication.hide(_:)), "h"),
+                item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+                item("Show All", #selector(NSApplication.unhideAllApplications(_:))), .separator(),
+                item("Stop dlus Completely...", #selector(stopAndQuit), target: self),
+                item("Quit dlus", #selector(NSApplication.terminate(_:)), "q"),
+            ])
+        sub(
+            "File",
+            [
+                item("New Download...", #selector(newDownload), "n", target: self), .separator(),
+                item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
+            ])
+        sub(
+            "Edit",
+            [
+                item("Undo", Selector(("undo:")), "z"), item("Redo", Selector(("redo:")), "z", [.command, .shift]), .separator(),
+                item("Cut", #selector(NSText.cut(_:)), "x"), item("Copy", #selector(NSText.copy(_:)), "c"),
+                item("Paste", #selector(NSText.paste(_:)), "v"), item("Select All", #selector(NSText.selectAll(_:)), "a"), .separator(),
+                item("Find in dlus", #selector(findInDlus), "f", target: self),
+            ])
+        let views: [(String, String)] = [
+            ("All Downloads", "all"), ("Active", "active"), ("Queue", "queued"), ("Finished", "done"), ("Library", "lib"),
+            ("Network & Storage", "net"), ("Devices & Viewers", "dev"), ("Sharing", "share"), ("VPN Router", "gw"), ("TV & Remote", "tv"),
+        ]
+        sub(
+            "Go",
+            views.enumerated().map { i, v in
+                let it = item(v.0, #selector(goView(_:)), String((i + 1) % 10), target: self)
+                it.representedObject = v.1
+                return it
+            })
+        sub(
+            "View",
+            [
+                item("Reload", #selector(reload), "r", target: self), item("Home", #selector(goHome), "h", [.command, .shift], target: self), .separator(),
+                item("Actual Size", #selector(zoomReset), "0", target: self), item("Zoom In", #selector(zoomIn), "+", target: self),
+                item("Zoom Out", #selector(zoomOut), "-", target: self), .separator(),
+                item("Open in Browser", #selector(openInBrowser), "b", [.command, .option], target: self), .separator(),
+                item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
+            ])
         sub("Window", [item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"), item("Zoom", #selector(NSWindow.performZoom(_:)))])
         NSApp.mainMenu = main
     }

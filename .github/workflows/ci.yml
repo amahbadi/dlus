@@ -31,6 +31,8 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: VPN-router firewall rules load in macOS pf (syntax check, changes nothing)
         run: sudo bash gateway/dlus-gw selftest | tee /dev/stderr | grep -c '^ok rules' | grep -qx 3
+      - name: Swift coding style (swift format, see .swift-format)
+        run: swift format lint --strict macos/main.swift
       - name: Native app compiles
         run: swiftc -O -target arm64-apple-macos12.0 -o /tmp/dlus macos/main.swift
       - name: Repeatable build (dlus.app identical in two builds)

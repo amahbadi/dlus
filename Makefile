@@ -14,8 +14,10 @@ test:             ## every check CI runs (except the macOS pf one, which needs s
 	$(PYTHON) -m unittest discover -s tests -v
 	shellcheck -S warning gateway/dlus-gw gateway/*.sh macos/*.sh macos/uninstall.command
 
-lint:             ## the coding standard (ruff, see pyproject.toml)
+lint:             ## the coding standard: ruff (pyproject.toml), swift format (.swift-format), ShellCheck
 	ruff check .
+	swift format lint --strict macos/main.swift
+	shellcheck -S warning gateway/dlus-gw gateway/*.sh macos/*.sh macos/uninstall.command
 
 coverage:         ## test coverage of dlus.py
 	$(PYTHON) -m coverage run --include=dlus.py -m unittest discover -s tests && $(PYTHON) -m coverage report

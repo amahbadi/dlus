@@ -354,7 +354,7 @@ def parse_checksum(text, names=(), strict=False):
             continue
         if file and names and os.path.basename(file.strip()) not in names:
             continue
-        if strict and not file and names and len([l for l in text.splitlines() if l.strip()]) > 1:
+        if strict and not file and names and len([entry for entry in text.splitlines() if entry.strip()]) > 1:
             continue  # a list of hashes without names: cannot tell which one is ours
         return a, hx.lower()
     return None
@@ -558,8 +558,8 @@ def release_score(mine, other):
 
 def vtt_starts(path):
     out = []
-    for l in rd(path).splitlines():
-        mm = re.match(r"^(?:(\d+):)?(\d{1,2}):(\d\d)[.,](\d{1,3})\s*-->", l.strip())
+    for entry in rd(path).splitlines():
+        mm = re.match(r"^(?:(\d+):)?(\d{1,2}):(\d\d)[.,](\d{1,3})\s*-->", entry.strip())
         if mm:
             out.append(int(mm.group(1) or 0) * 3600 + int(mm.group(2)) * 60 + int(mm.group(3)) + int((mm.group(4) + "00")[:3]) / 1000)
     return sorted(out)
@@ -751,7 +751,7 @@ def styled_ass(vtt_path, style, delay):
              "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
     for blk in re.split(r"\n{2,}", rd(vtt_path).replace("\r", "")):
         L = blk.split("\n")
-        k = next((i for i, l in enumerate(L) if "-->" in l), None)
+        k = next((i for i, entry in enumerate(L) if "-->" in entry), None)
         if k is None:
             continue
         mm = re.match(r"(?:(\d+):)?(\d+):(\d\d)[.,](\d+)\s*-->\s*(?:(\d+):)?(\d+):(\d\d)[.,](\d+)", L[k].strip())
@@ -760,7 +760,7 @@ def styled_ass(vtt_path, style, delay):
         g = mm.groups()
         a = int(g[0] or 0) * 3600 + int(g[1]) * 60 + int(g[2]) + int((g[3] + "00")[:3]) / 1000 + delay
         b = int(g[4] or 0) * 3600 + int(g[5]) * 60 + int(g[6]) + int((g[7] + "00")[:3]) / 1000 + delay
-        txt = "\\N".join(re.sub(r"<[^>]+>", "", l).strip() for l in L[k + 1:] if l.strip())
+        txt = "\\N".join(re.sub(r"<[^>]+>", "", entry).strip() for entry in L[k + 1:] if entry.strip())
         if txt and b > 0:
             lines.append("Dialogue: 0,%s,%s,Default,,0,0,0,,%s" % (ts(a), ts(b), txt.replace("{", "(").replace("}", ")")))
     wr(out, "\n".join(lines) + "\n")
@@ -836,14 +836,14 @@ class Net:
                 if pm and dm:
                     self.ports[dm.group(1)] = pm.group(1)
         ifs, cur = {}, None
-        for l in sh(["ifconfig"]).splitlines():
-            mm = re.match(r"^(\S+?):\s+flags=\d+<([^>]*)>", l)
+        for entry in sh(["ifconfig"]).splitlines():
+            mm = re.match(r"^(\S+?):\s+flags=\d+<([^>]*)>", entry)
             if mm:
                 cur = mm.group(1)
                 ifs[cur] = {"up": "UP" in mm.group(2).split(","), "inet": [], "active": False}
-            elif cur and l.strip().startswith("inet "):
-                ifs[cur]["inet"].append(l.split()[1])
-            elif cur and "status: active" in l:
+            elif cur and entry.strip().startswith("inet "):
+                ifs[cur]["inet"].append(entry.split()[1])
+            elif cur and "status: active" in entry:
                 ifs[cur]["active"] = True
         tun = [(n, d["inet"][0]) for n, d in ifs.items() if self.TUN.match(n) and d["up"] and d["inet"]]
         i["tunnels"] = [{"if": n, "ip": ip, "kind": self.tun_kind(ip)} for n, ip in tun]
@@ -862,8 +862,8 @@ class Net:
         i["apps"] = sorted({v for k, v in self.VPN_APPS.items() if k in procs})
         # VPN profiles known to macOS (WireGuard, V2Box, IKEv2, ...) with their real state
         vpns = []
-        for l in sh(["scutil", "--nc", "list"]).splitlines():
-            mm = re.search(r'\((\w+)\)\s+[0-9A-F-]{36}\s+(.+?)\s+"([^"]*)"\s+\[([^\]]*)\]', l)
+        for entry in sh(["scutil", "--nc", "list"]).splitlines():
+            mm = re.search(r'\((\w+)\)\s+[0-9A-F-]{36}\s+(.+?)\s+"([^"]*)"\s+\[([^\]]*)\]', entry)
             if mm:
                 prov = mm.group(4).split(":", 1)[-1]
                 app = next((v for k, v in self.PROVIDERS if k in prov.lower()), prov.split(".")[-1] or mm.group(2))
@@ -904,8 +904,8 @@ class Net:
         ifc = self.info.get("iface")
         if not ifc:
             return
-        for l in sh(["netstat", "-ibn", "-I", ifc]).splitlines():
-            c = l.split()
+        for entry in sh(["netstat", "-ibn", "-I", ifc]).splitlines():
+            c = entry.split()
             if len(c) >= 10 and c[0] == ifc and c[2].startswith("<Link"):
                 rx, tx, t = int(c[-5]), int(c[-2]), time.time()
                 if self.prev and self.prev[0] == ifc and t > self.prev[3]:
@@ -970,7 +970,8 @@ def qr_matrix(text):
     else:
         raise ValueError("text too long for a QR code")
     bits = []
-    app = lambda v, n: bits.extend((v >> i) & 1 for i in range(n - 1, -1, -1))
+    def app(v, n):
+        return bits.extend((v >> i) & 1 for i in range(n - 1, -1, -1))
     app(4, 4)
     app(len(data), 8 if ver < 10 else 16)
     for b in data:
@@ -1019,7 +1020,8 @@ def qr_matrix(text):
         for _ in range(10):
             r = (r << 1) ^ ((r >> 9) * 0x537)
         b = ((d << 10) | r) ^ 0x5412
-        g = lambda i: (b >> i) & 1
+        def g(i):
+            return (b >> i) & 1
         for i in range(6):
             put(8, i, g(i))
         put(8, 7, g(6))
@@ -1162,9 +1164,9 @@ class ProxyServer:
         self.lock = threading.Lock()
         self.prev = 0
         own = set()
-        for l in sh(["ifconfig"]).splitlines():
-            if l.strip().startswith("inet "):
-                own.add(l.split()[1])
+        for entry in sh(["ifconfig"]).splitlines():
+            if entry.strip().startswith("inet "):
+                own.add(entry.split()[1])
         # security scan: list of this Mac's own addresses, not a bind
         self.own = own | {"127.0.0.1", "0.0.0.0", "localhost", "::1"}  # nosec B104
         srv = self
@@ -1188,9 +1190,9 @@ class ProxyServer:
         """this Mac's addresses, refreshed every 30 s (they change with the network)"""
         if time.time() - getattr(self, "own_t", 0) > 30:
             own = set()
-            for l in sh(["ifconfig"]).splitlines():
-                if l.strip().startswith(("inet ", "inet6 ")):
-                    own.add(l.split()[1].split("%")[0])
+            for entry in sh(["ifconfig"]).splitlines():
+                if entry.strip().startswith(("inet ", "inet6 ")):
+                    own.add(entry.split()[1].split("%")[0])
             # security scan: proxy for the home network, only when the user turns it on; private addresses only
             self.own, self.own_t = own | {"127.0.0.1", "0.0.0.0", "localhost", "::1"}, time.time()  # nosec B104
         return self.own
@@ -1236,8 +1238,8 @@ class ProxyServer:
         except ValueError:
             return
         hdrs = {}
-        for l in lines[1:]:
-            k, _, v = l.partition(":")
+        for entry in lines[1:]:
+            k, _, v = entry.partition(":")
             hdrs[k.strip().lower()] = v.strip()
         st = self.m.settings
         if st.get("proxy_auth"):
@@ -1289,7 +1291,7 @@ class ProxyServer:
             else:
                 u = urllib.parse.urlsplit(target)
                 path = (u.path or "/") + ("?" + u.query if u.query else "")
-                keep = [l for l in lines[1:] if not l.lower().startswith(("proxy-", "connection:", "keep-alive:"))]
+                keep = [entry for entry in lines[1:] if not entry.lower().startswith(("proxy-", "connection:", "keep-alive:"))]
                 req = "%s %s %s\r\n%s\r\nConnection: close\r\n\r\n" % (method, path, ver, "\r\n".join(keep))
                 up.sendall(req.encode("latin-1") + rest)
                 c["up"] += len(req) + len(rest)
@@ -1380,8 +1382,9 @@ def files_page(m, rel):
     tok = m.settings["lan_token"]
     base = os.path.realpath(os.path.expanduser(m.settings["base_dir"]))
     rows, title = [], "dlus files"
-    icon = lambda c: {"Video": "&#127916;", "Audio": "&#127925;", "Images": "&#128444;", "Archives": "&#128230;", "Documents": "&#128196;",
-                      "Ebooks": "&#128214;", "Programs": "&#128187;", "Subtitles": "&#128172;", "Disk images": "&#128191;"}.get(c, "&#128196;")
+    def icon(c):
+        return {"Video": "&#127916;", "Audio": "&#127925;", "Images": "&#128444;", "Archives": "&#128230;", "Documents": "&#128196;",
+                          "Ebooks": "&#128214;", "Programs": "&#128187;", "Subtitles": "&#128172;", "Disk images": "&#128191;"}.get(c, "&#128196;")
     if not rel:
         for d in list(m.dls.values()):
             r = d.r
@@ -1830,8 +1833,8 @@ class Gateway:
         tvs = {t["ip"]: t["name"] for t in self.m.settings.get("tvs") or []}
         names = self.m.settings.get("gw_names") or {}
         devs = {}
-        for l in sh(["arp", "-an", "-i", lan["if"]]).splitlines():
-            mm = re.search(r"\((\d+\.\d+\.\d+\.\d+)\) at ([0-9a-f:]{11,17}) on", l)
+        for entry in sh(["arp", "-an", "-i", lan["if"]]).splitlines():
+            mm = re.search(r"\((\d+\.\d+\.\d+\.\d+)\) at ([0-9a-f:]{11,17}) on", entry)
             if not mm:
                 continue
             ip, mac = mm.group(1), mm.group(2)
@@ -1980,18 +1983,18 @@ class Gateway:
         if not hasattr(self, "conn_bytes"):
             self.load_usage()
         seen = {}
-        for l in out.splitlines():
-            if " | " not in l or "bytes" not in l:
+        for entry in out.splitlines():
+            if " | " not in entry or "bytes" not in entry:
                 continue
-            ips = re.findall(r"(\d+\.\d+\.\d+\.\d+):\d+", l)
-            b = re.search(r"(\d+):(\d+) bytes", l)
+            ips = re.findall(r"(\d+\.\d+\.\d+\.\d+):\d+", entry)
+            b = re.search(r"(\d+):(\d+) bytes", entry)
             if not ips or not b:
                 continue
             a = agg.setdefault(ips[0], [0, 0])
             a[0] += 1
             cur = int(b.group(1)) + int(b.group(2))
             a[1] += cur
-            key = l.split(" | ")[0].strip()  # one connection: count only what is new since the last look
+            key = entry.split(" | ")[0].strip()  # one connection: count only what is new since the last look
             prev = self.conn_bytes.get(key, 0)
             self.count_usage(ips[0], cur - prev if cur >= prev else cur)
             seen[key] = cur
@@ -2201,7 +2204,7 @@ class DL:
         lines = rd(os.path.join(self.parts, "events.log")).splitlines()
         self.events.extend(lines[-300:] if lines else r.get("events", []))
         if "fails" not in r:
-            r["fails"] = sum("FAILED" in l for l in lines)
+            r["fails"] = sum("FAILED" in entry for entry in lines)
         r.setdefault("bound_ip", bound_ip(r["url"]))
 
     @property
@@ -2340,8 +2343,8 @@ class DL:
                              "http": last[4], "t": time.time()}
         total = length = None
         etag = fname = ""
-        for l in lines[:-1]:
-            k, _, v = l.partition(":")
+        for entry in lines[:-1]:
+            k, _, v = entry.partition(":")
             k = k.strip().lower()
             if k == "content-range":
                 mm = re.search(r"/(\d+)\s*$", v)
@@ -3714,7 +3717,8 @@ class Manager:
                 k += 1
                 if b <= 0:
                     continue
-                f = lambda x: "%02d:%02d:%02d.%03d" % (x // 3600, x % 3600 // 60, x % 60, round(x % 1 * 1000) % 1000)
+                def f(x):
+                    return "%02d:%02d:%02d.%03d" % (x // 3600, x % 3600 // 60, x % 60, round(x % 1 * 1000) % 1000)
                 lines.append("%s --> %s\n%s" % (f(max(0, a)), f(b), blk[mm.end():].strip("\n")))
             wr(path, "WEBVTT\n\n" + "\n\n".join(lines) + "\n")
             t["fixed"] = "sections"
@@ -3858,7 +3862,8 @@ class Manager:
                 xml = urllib.request.urlopen(loc, timeout=4).read(1 << 20).decode("utf-8", "ignore")  # nosec B310
             except (OSError, ValueError):
                 continue
-            tag = lambda t, x=xml: html.unescape((re.search(r"<%s>(.*?)</%s>" % (t, t), x, re.S) or [None, ""])[1].strip())
+            def tag(t, x=xml):
+                return html.unescape((re.search(r"<%s>(.*?)</%s>" % (t, t), x, re.S) or [None, ""])[1].strip())
             ctl = next((tag("controlURL", b) for b in re.findall(r"<service>(.*?)</service>", xml, re.S)
                         if "AVTransport" in tag("serviceType", b)), "")
             if not ctl:
@@ -4441,8 +4446,8 @@ class Manager:
         if time.time() - getattr(self, "_lp_t", 0) < 20:
             return self._lp
         found = []
-        for l in sh(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"], 5).splitlines()[1:]:
-            c = l.split()
+        for entry in sh(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN"], 5).splitlines()[1:]:
+            c = entry.split()
             mm = re.search(r"(127\.0\.0\.1|\*|localhost):(\d+)$", c[8] if len(c) > 8 else "")
             if not mm or not re.search(r"v2box|xray|v2ray|sing-?box|clash|mihomo|hiddify|shadow|trojan|privoxy|tor|nekoray|foxray", c[0], re.I):
                 continue
@@ -4605,8 +4610,8 @@ class Manager:
     def route_table():
         """the Mac's IPv4 routes that matter (default, networks, VPN) - not the cached per-host entries"""
         out = []
-        for l in sh(["netstat", "-rn", "-f", "inet"]).splitlines():
-            f = l.split()
+        for entry in sh(["netstat", "-rn", "-f", "inet"]).splitlines():
+            f = entry.split()
             if len(f) < 4 or f[0] in ("Routing", "Internet:", "Destination") or "W" in f[2] or "L" in f[2]:
                 continue
             if f[0].startswith(("224", "255", "169.254", "127")):
@@ -4616,10 +4621,11 @@ class Manager:
 
     def gw_result(self, title, ok, output, before, extra=None):
         after = self.route_table()
-        key = lambda r: (r["dest"], r["via"], r["if"])
+        def key(r):
+            return (r["dest"], r["via"], r["if"])
         b, a = {key(r) for r in before}, {key(r) for r in after}
         rows = [dict(r, st="added" if key(r) not in b else "") for r in after] + [dict(r, st="removed") for r in before if key(r) not in a]
-        lines = [l for l in (output or "").splitlines() if l.strip() and "pfctl: Use of -f" not in l and "present in the main" not in l and "See /etc/pf.conf" not in l]
+        lines = [entry for entry in (output or "").splitlines() if entry.strip() and "pfctl: Use of -f" not in entry and "present in the main" not in entry and "See /etc/pf.conf" not in entry]
         res = {"title": title, "ok": ok, "at": time.time(), "lines": lines[-40:], "routes": rows,
                "added": sum(1 for r in rows if r["st"] == "added"), "removed": sum(1 for r in rows if r["st"] == "removed")}
         res.update(extra or {})
@@ -4657,7 +4663,7 @@ class Manager:
         self.audit("VPN-router root helper: %s%s" % (title.lower(), "" if ok else " - failed"), level="warn")
         res = self.gw_result(title if ok else title.replace("updated", "update").replace("installed", "install").replace("removed", "removal") + " failed", ok, out, before,
                              {"kind": "admin", "act": act, "v_from": v0, "v_to": self.gw.vers[0], "command": "sudo " + cmd.replace(" 2>&1", ""),
-                              "checks": sum(1 for l in out.splitlines() if l.startswith("ok rules"))})
+                              "checks": sum(1 for entry in out.splitlines() if entry.startswith("ok rules"))})
         return dict(res, output=out)
 
     def gw_full(self, b):
@@ -4691,8 +4697,8 @@ class Manager:
         """'Check routes': what the router sees, as text"""
         G = self.gw
         parts = [("Internet route of this Mac (route get 1.1.1.1)", sh(["route", "-n", "get", "1.1.1.1"])),
-                 ("Default and VPN routes (netstat -rn)", "\n".join(l for l in sh(["netstat", "-rn", "-f", "inet"]).splitlines()
-                                                                    if re.match(r"^(Destination|default|0/1|128\.0/1|0\.0\.0\.0)", l) or "utun" in l or "ipsec" in l)[:4000]),
+                 ("Default and VPN routes (netstat -rn)", "\n".join(entry for entry in sh(["netstat", "-rn", "-f", "inet"]).splitlines()
+                                                                    if re.match(r"^(Destination|default|0/1|128\.0/1|0\.0\.0\.0)", entry) or "utun" in entry or "ipsec" in entry)[:4000]),
                  ("VPN tunnels (up, with IPv4)", "\n".join("%s  %s  %s%s" % (t["if"], t["ip"], t["name"], "  <- carries the internet" if t["if"] == (self.net.info.get("route_iface") or "") else "")
                                                        for t in G.tunnels()) or "none"),
                  ("VPN apps running", ", ".join(self.net.info.get("apps") or []) or "none"),
@@ -5309,7 +5315,7 @@ class HLS:
         r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", "-noaccurate_seek", "-ss", "%.3f" % t, "-i", src, "-map", "0:v:0", "-c", "copy",
                             "-copyts", "-frames:v", "1", "-f", "framemd5", "-"], capture_output=True, text=True, timeout=30)
         tb = re.search(r"#tb 0: (\d+)/(\d+)", r.stdout)
-        row = [l for l in r.stdout.splitlines() if l and not l.startswith("#")]
+        row = [entry for entry in r.stdout.splitlines() if entry and not entry.startswith("#")]
         if not tb or not row:
             return t
         pts = int(row[0].split(",")[2])
@@ -6398,7 +6404,8 @@ def make_lan_handler(m):
                     return self.to_page(d)
                 if d:
                     q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-                    num = lambda k, dflt: float((q.get(k) or [dflt])[0] or dflt)
+                    def num(k, dflt):
+                        return float((q.get(k) or [dflt])[0] or dflt)
                     if not mm.group(3) and not mm.group(2):
                         m.sessions.saw(self, "opened the player page: " + d.r["name"])
                         return self.out(200, tv_page(m, d).encode(), "text/html; charset=utf-8")

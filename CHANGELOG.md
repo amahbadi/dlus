@@ -5,6 +5,10 @@
 > [!NOTE]
 > Security fixes are marked 🔒. dlus has had no publicly known vulnerabilities so far; the fixes below were found by our own review and scanners.
 
+## Unreleased
+
+- 🤖 Coding style enforced in CI: full PEP 8 for Python (ruff) and `swift format` for the Swift window; code cleaned up to pass both (no behaviour change)
+
 ## 7.26 - 2026-11-12
 
 - 🔒 Credentials (TV code, proxy password, TV pairing keys and certificates) moved out of `settings.json` into their own `secrets.json` (mode 600); existing setups are moved automatically and old backups cleaned
