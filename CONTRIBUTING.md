@@ -7,7 +7,7 @@
 
 ## 🐞 Issues
 
-Bugs and ideas: open an [issue](https://github.com/amahbadi/dlus/issues) - templates are included.
+Bugs and ideas: open an [issue](https://github.com/amahbadi/dlus/issues) - templates are included. New here? Start with an issue labelled **[good first issue](https://github.com/amahbadi/dlus/labels/good%20first%20issue)**.
 
 > [!WARNING]
 > Remove personal data (IP addresses, codes, file paths, device names) from logs and screenshots before you post them.
@@ -51,6 +51,27 @@ fork → branch → pull request → 🤖 checks comment on it → fix until ✅
 
 - ❌ If something fails, a bot comment lists **what to fix** and the PR gets the label `security: fix needed`.
 - ✅ When everything is green, the label changes to `ready for review` and the maintainer reviews it.
+
+## 🔍 Code review
+
+**How it is done:** every change to `main` is a pull request on GitHub. A reviewer reads the whole diff, runs it when it changes behaviour (`make test`, `make run`), and comments on the lines in GitHub. Questions and requested changes are answered in the pull request; the author pushes fixes to the same branch.
+
+**What the reviewer checks**
+
+| Area | Questions |
+|---|---|
+| ✅ Correctness | Does it do what the pull request says? Edge cases, errors, a download / stream / TV that is slow or offline? |
+| 🧪 Tests | Is there a test for the new behaviour or the fixed bug ([test policy](#-pull-requests))? Do they fail without the change? |
+| 🔒 Security | Input from the network, servers and files checked with an allow-list? No `shell=True`, no new root code without need, paths through `safe_join`, no secrets or personal data, nothing opened on the network by default? (see [SECURITY.md](SECURITY.md), [assurance case](docs/ASSURANCE-CASE.md)) |
+| 🛡️ Root helper | Any change to `gateway/` keeps the fixed command set, checks every argument, and passes the `pf` selftest |
+| 🧹 Code | Follows the [code standard](#-pull-requests); simple; no dead code; no new dependencies |
+| 📖 Docs | README / user guide / SECURITY.md / changelog updated when behaviour changes |
+
+**What is required to be accepted**
+
+- every automatic check is green: CI, Security, CodeQL, DCO
+- the required approvals (two for outside contributors, including the code owner) and all review threads resolved
+- the branch is up to date with `main`, and every commit is signed off
 
 > [!NOTE]
 > Releases are published by the maintainer only. Changes touching the root helper (`gateway/`), the network servers or downloads get an extra careful review.
