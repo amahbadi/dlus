@@ -66,6 +66,16 @@ class SharedFolders(unittest.TestCase):
             self.assertFalse(dlus.share_ok(f), f)
         self.assertTrue(dlus.share_ok("/Volumes/Media/Films"))
 
+    def test_safe_join_never_leaves_the_folder(self):
+        base = tempfile.mkdtemp()
+        os.makedirs(os.path.join(base, "a"))
+        os.symlink("/etc", os.path.join(base, "link"))
+        real = os.path.realpath(base)
+        self.assertEqual(dlus.safe_join(base, "a"), os.path.join(real, "a"))
+        self.assertEqual(dlus.safe_join(base, "."), real)
+        for bad in ("..", "../x", "a/../../x", "/etc/passwd", "link/passwd"):
+            self.assertIsNone(dlus.safe_join(base, bad), bad)
+
     def test_hidden_files_are_never_served(self):
         self.assertTrue(dlus.hidden_inside("/m", "/m/a/.ssh/id_ed25519"))
         self.assertTrue(dlus.hidden_inside("/m", "/m/.git/config"))

@@ -7,7 +7,7 @@ bad = 0
 for name in ("PAGE", "TV_PAGE"):
     a = s.index('\n%s = r"""' % name) + len('\n%s = r"""' % name)
     b = s.index('"""', a)
-    js = "\n".join(re.findall(r"<script>(.*?)</script>", s[a:b], re.S)).replace("/*SUBJS*/", subjs).replace("__CFG__", "{}")
+    js = "\n".join(re.findall(r"<script\b[^>]*>(.*?)</script\s*>", s[a:b], re.S | re.I)).replace("/*SUBJS*/", subjs).replace("__CFG__", "{}")
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
         f.write(js)
     r = subprocess.run(["node", "--check", f.name], capture_output=True, text=True)

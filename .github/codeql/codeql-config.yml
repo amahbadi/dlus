@@ -1,0 +1,9 @@
+# CodeQL settings for dlus
+name: dlus CodeQL config
+queries:
+  - uses: security-extended
+query-filters:
+  # The home-network server listens on all interfaces by design: it is off until the user turns sharing on,
+  # answers private addresses only, and every device must be approved in the app (see SECURITY.md).
+  - exclude:
+      id: py/bind-socket-all-network-interfaces

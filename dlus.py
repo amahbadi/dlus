@@ -61,7 +61,7 @@ import zlib
 from xml.sax.saxutils import escape as xesc
 
 PORT = 8642
-VERSION = "7.24"
+VERSION = "7.25"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))  # ~/Desktop/dlus, or dlus.app/Contents/Resources when installed
 ICON_DIR = os.path.join(APP_DIR, "icons")
 APP_HEAD = ('<link rel=manifest href="/manifest.webmanifest"><link rel=icon type=image/png sizes=192x192 href="/icon-192.png">'
@@ -195,8 +195,9 @@ def app_icon(h, path, start):
     """serves /icon-*.png, /apple-touch-icon.png, /manifest.webmanifest; True if it answered"""
     name = {"/apple-touch-icon.png": "icon-180.png", "/apple-touch-icon-precomposed.png": "icon-180.png",
             "/favicon.png": "icon-32.png"}.get(path) or (path[1:] if re.match(r"^/icon-(32|180|192|512)\.png$", path) else "")
-    if name and os.path.exists(os.path.join(ICON_DIR, name)):
-        with open(os.path.join(ICON_DIR, name), "rb") as f:
+    icon = safe_join(ICON_DIR, name) if name else None
+    if icon and os.path.isfile(icon):
+        with open(icon, "rb") as f:
             h.out(200, f.read(), "image/png", {"Cache-Control": "max-age=86400"})
         return True
     if path in ("/manifest.webmanifest", "/manifest.json"):
@@ -391,6 +392,17 @@ class OneLineFormatter(logging.Formatter):
 def logsafe(v, n=300):
     """a value from the network, safe for one log line (no forged lines)"""
     return str(v)[:n].replace("\r", "\\r").replace("\n", "\\n")
+
+
+def safe_join(base, rel):
+    """real path of rel inside base, or None if it would leave base (../, links)"""
+    base = os.path.realpath(base)
+    p = os.path.realpath(os.path.join(base, rel))
+    if p == base:
+        return base
+    if not p.startswith(base + os.sep):
+        return None
+    return p
 
 
 def hidden_inside(base, path):
@@ -1368,8 +1380,8 @@ def files_page(m, rel):
         if os.path.isdir(base):
             body += "<h2>Download folder</h2><p><a href='/%s/files/dir/'>&#128193; %s</a></p>" % (tok, xesc(base.replace(os.path.expanduser("~"), "~")))
         return title, body
-    path = os.path.realpath(os.path.join(base, urllib.parse.unquote(rel)))
-    if not (path == base or path.startswith(base + os.sep)) or not os.path.exists(path) or hidden_inside(base, path):
+    path = safe_join(base, urllib.parse.unquote(rel))
+    if not path or not os.path.exists(path) or hidden_inside(base, path):
         return None, None
     if os.path.isfile(path):
         return "file", path
@@ -1578,6 +1590,7 @@ class WebOSTV:
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE  # the TV uses a self-signed certificate: pinned below instead (trust on first use)
+            ctx.minimum_version = ssl.TLSVersion.TLSv1_2
             s = ctx.wrap_socket(s, server_hostname=host)
             fp = hashlib.sha256(s.getpeercert(binary_form=True) or b"").hexdigest()
             if self.pin.startswith("tls:") and not secrets.compare_digest(fp, self.pin[4:]):
@@ -4216,10 +4229,10 @@ class Manager:
         dirs = dict(self.share_dirs())
         if i not in dirs:
             return None
-        full = os.path.realpath(os.path.join(dirs[i], rel or "."))
-        if hidden_inside(dirs[i], full):
+        full = safe_join(dirs[i], rel or ".")
+        if not full or hidden_inside(dirs[i], full):
             return None
-        return full if full == dirs[i] or full.startswith(dirs[i] + os.sep) else None
+        return full
 
     def dlna_folder(self, oid):
         """children of a DLNA container: 0 = root, dl = dlus downloads, f<i>[:<relpath>] = shared folder"""
@@ -5228,7 +5241,7 @@ def send_compat(h, m, d, fmt, t=0.0, a=0, ch=0, snd=None, seek_hdr=False, qualit
     err = []
     threading.Thread(target=lambda: err.append(p.stderr.read().decode("utf-8", "ignore")), daemon=True).start()
     sent, why = 0, "ffmpeg finished"
-    log.info("media %s %s %s t=%.1f q=%s range=%s ua=%s", h.client_address[0], fmt, d.r["num"], t, quality, logsafe(h.headers.get("Range", "-")),
+    log.info("media %s %s %s t=%.1f q=%s range=%s ua=%s", h.client_address[0], logsafe(fmt, 20), d.r["num"], t, logsafe(quality, 20), logsafe(h.headers.get("Range", "-")),
              logsafe(h.headers.get("User-Agent") or "", 60))
     try:
         while True:
@@ -5346,8 +5359,8 @@ class HLS:
         if not x or not re.match(r"^(index\.m3u8|init\.mp4|s\d{5}\.m4s)$", name):
             return h.out(404, b"gone", "text/plain")
         x["seen"] = time.time()
-        f = os.path.join(x["dir"], name)
-        if not os.path.exists(f):
+        f = safe_join(x["dir"], name)
+        if not f or not os.path.exists(f):
             return h.out(404, b"not yet", "text/plain")
         data = open(f, "rb").read()
         if name == "index.m3u8":
@@ -6132,8 +6145,9 @@ def make_lan_handler(m):
             parts = [urllib.parse.unquote(x) for x in self.path.split("?")[0].strip("/").split("/")]
             if not self.gate(parts):
                 return
-            if len(parts) == 2 and parts[0] == "fonts" and re.match(r"^[\w\-]+\.(woff2|woff|ttf|otf)$", parts[1]) and os.path.exists(os.path.join(fonts_dir(), parts[1])):
-                with open(os.path.join(fonts_dir(), parts[1]), "rb") as f:
+            ff = safe_join(fonts_dir(), parts[1]) if len(parts) == 2 and parts[0] == "fonts" and re.match(r"^[\w\-]+\.(woff2|woff|ttf|otf)$", parts[1]) else None
+            if ff and os.path.isfile(ff):
+                with open(ff, "rb") as f:
                     return self.out(200, f.read(), FONT_MIME[parts[1].rsplit(".", 1)[1]], {"Cache-Control": "max-age=31536000"})
             if parts[0] == "dlna" and m.ssdp and len(parts) == 2:
                 doc = {"desc.xml": dlna_desc(m), "cds.xml": CDS_SCPD, "cms.xml": CMS_SCPD}.get(parts[1])
@@ -6565,6 +6579,7 @@ def make_handler(m, port):
                 self.send_response(302)
                 if not path.startswith("/") or path.startswith("//") or "\\" in path:
                     path = "/"  # only addresses on this page: never another site
+                path = path.replace("\r", "").replace("\n", "")
                 self.send_header("Location", path + ("?" + rest if rest else ""))
                 self.send_header("Set-Cookie", "dlus_k=%s; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict" % key)
                 self.send_header("Content-Length", "0")
@@ -6585,8 +6600,9 @@ def make_handler(m, port):
             if p == "/api/state":
                 return self.out(200, m.state())
             mf = re.match(r"^/fonts/([\w\-]+\.(woff2|woff|ttf|otf))$", p)
-            if mf and os.path.exists(os.path.join(fonts_dir(), mf.group(1))):
-                with open(os.path.join(fonts_dir(), mf.group(1)), "rb") as f:
+            ff = safe_join(fonts_dir(), mf.group(1)) if mf else None
+            if ff and os.path.isfile(ff):
+                with open(ff, "rb") as f:
                     return self.out(200, f.read(), FONT_MIME[mf.group(2)], {"Cache-Control": "max-age=31536000"})
             if p == "/qr.svg":
                 q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("d", [""])[0]

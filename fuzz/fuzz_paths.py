@@ -20,6 +20,8 @@ def test(data):
     if inside and not hidden:
         assert not any(p.startswith(".") for p in os.path.relpath(full, BASE).split(os.sep) if p != "."), full
     dlus.share_ok("/" + rel.lstrip("/"))
+    j = dlus.safe_join(BASE, rel)
+    assert j is None or j == os.path.realpath(BASE) or j.startswith(os.path.realpath(BASE) + os.sep), j
 
 
 atheris.Setup(sys.argv, test)

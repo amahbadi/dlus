@@ -5,6 +5,13 @@
 > [!NOTE]
 > Security fixes are marked 🔒. dlus has had no publicly known vulnerabilities so far; the fixes below were found by our own review and scanners.
 
+## 7.25 - 2026-11-12
+
+- 🔒 Every file the network can ask for (icons, fonts, shared folders, the file browser, TV streams) goes through one checked path function that can never leave its folder
+- 🔒 LG TV connection requires TLS 1.2 or newer
+- 🔒 Remaining request values in log lines sanitized; redirect header cannot carry line breaks
+- 🤖 New tests and a fuzz property for the path check; CodeQL findings closed in code
+
 ## 7.24 - 2026-11-12
 
 - 🔒 Redirect after unlocking the window can only stay on the dlus page (never another site)
