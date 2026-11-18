@@ -194,6 +194,13 @@ class QRCodes(unittest.TestCase):
         m = dlus.qr_matrix("HELLO")
         self.assertEqual(len(m), len(m[0]))
 
+    def test_custom_colours(self):
+        svg = dlus.qr_svg("http://192.168.1.10:8643/abcdef", dark="#112233", light="#ffeedd")
+        self.assertIn('fill="#ffeedd"', svg)  # background
+        self.assertIn('fill="#112233"', svg)  # modules
+        self.assertNotIn('fill="#000"', svg)
+        self.assertNotIn('fill="#fff"', svg)
+
 
 class PublicIP(unittest.TestCase):
     def test_public_ip_with_and_without_answers(self):
