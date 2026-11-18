@@ -58,6 +58,21 @@ jobs:
       - name: Repeatable build (dlus.app identical in two builds)
         run: bash macos/check_repeatable.sh
 
+  linux:
+    # the same tests on Ubuntu (macOS-only tests are skipped there), see docs/LINUX.md
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ffmpeg (for the media tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Tests with coverage
+        run: |
+          python3 -m venv /tmp/cov && /tmp/cov/bin/pip install --quiet --require-hashes -r .github/requirements-ci.txt
+          /tmp/cov/bin/coverage run --include=dlus.py -m unittest discover -s tests -v
+          /tmp/cov/bin/coverage report | tee -a "$GITHUB_STEP_SUMMARY"
+
   badge:
     # publishes the coverage percentage to the "badges" branch, which the README badge reads (shields.io endpoint)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

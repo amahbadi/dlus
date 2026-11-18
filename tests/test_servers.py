@@ -49,6 +49,7 @@ def wait(cond, timeout=30):
     return False
 
 
+@unittest.skipUnless(sys.platform == "darwin", "setUpClass binds the LAN port twice (0.0.0.0 and 127.0.0.1), which Linux refuses; to be ported")
 class Servers(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
