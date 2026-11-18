@@ -309,6 +309,37 @@ def sh(cmd, timeout=5):
         return ""
 
 
+def neighbours(ifc="", ip=""):
+    """[(ip, mac)] of devices this computer has talked to recently (the neighbour / ARP table), optionally only one interface or one address.
+    macOS: `arp`; Linux: `ip -j neigh` (entries without a hardware address, or FAILED / INCOMPLETE, are left out)"""
+    out = []
+    if sys.platform == "darwin":
+        cmd = ["arp", "-an", "-i", ifc] if ifc else ["arp", "-n", ip] if ip else ["arp", "-an"]
+        for entry in sh(cmd, 3 if ip else 5).splitlines():
+            mm = re.search(r"\((\d+\.\d+\.\d+\.\d+)\) at ([0-9a-f:]{11,17}) ", entry)
+            if mm:
+                out.append((mm.group(1), mm.group(2)))
+    else:
+        cmd = ["ip", "-j", "neigh", "show"] + (["to", ip] if ip else ["dev", ifc] if ifc else [])
+        try:
+            rows = json.loads(sh(cmd, 3 if ip else 5) or "[]")
+        except ValueError:
+            rows = []
+        for r in rows if isinstance(rows, list) else []:
+            if not isinstance(r, dict) or not re.match(r"^\d+\.\d+\.\d+\.\d+$", str(r.get("dst", ""))):
+                continue
+            states = r.get("state") or []
+            if not re.match(r"^([0-9a-f]{1,2}:){5}[0-9a-f]{1,2}$", str(r.get("lladdr", "")).lower()) or {"FAILED", "INCOMPLETE"} & set(states):
+                continue
+            out.append((r["dst"], r["lladdr"].lower()))
+    return [(a, ":".join(x.zfill(2) for x in m.split(":"))) for a, m in out]
+
+
+def neighbour_mac(ip):
+    """hardware address of one device on the home network, "" when unknown"""
+    return next((m for a, m in neighbours(ip=ip) if a == ip), "")
+
+
 def category(name):
     n = name.lower()
     if re.search(r"\.(7z|zip|rar|tar)\.\d{3}$|\.part\d+\.rar$|\.r\d\d$", n):
@@ -1795,14 +1826,9 @@ class Gateway:
         tvs = {t["ip"]: t["name"] for t in self.m.settings.get("tvs") or []}
         names = self.m.settings.get("gw_names") or {}
         devs = {}
-        for entry in sh(["arp", "-an", "-i", lan["if"]]).splitlines():
-            mm = re.search(r"\((\d+\.\d+\.\d+\.\d+)\) at ([0-9a-f:]{11,17}) on", entry)
-            if not mm:
-                continue
-            ip, mac = mm.group(1), mm.group(2)
+        for ip, mac in neighbours(ifc=lan["if"]):
             if ip in (own, lan["gw"]) or mac.startswith("ff:ff") or ipaddress.IPv4Address(ip) not in ipaddress.IPv4Network(lan["cidr"]):
                 continue
-            mac = ":".join(x.zfill(2) for x in mac.split(":"))
             seen = self.m.sessions.seen.get(ip, {})
             host = self.m.sessions.host_info(ip).get("host", "")
             name = (names.get(mac) or tvs.get(ip) or seen.get("device") or (host.split(".")[0] if host else "")
@@ -2055,9 +2081,9 @@ class Sessions:
             if not self.hosts[ip]["host"] or re.match(r"^[\d.]+$", self.hosts[ip]["host"]):
                 gw = (self.m.gw.st.get("lan") or {}).get("gw", "") if hasattr(self.m, "gw") else ""
                 self.hosts[ip]["host"] = lan_name(ip, gw)
-            mm = re.search(r" at ([0-9a-f:]{11,17}) ", sh(["arp", "-n", ip], 3))
-            if mm:
-                self.hosts[ip]["mac"] = mm.group(1)
+            mac = neighbour_mac(ip)
+            if mac:
+                self.hosts[ip]["mac"] = mac
         if ip not in ("127.0.0.1", "::1"):
             threading.Thread(target=look, daemon=True).start()
         return self.hosts[ip]
@@ -2973,8 +2999,7 @@ class Manager:
         c = self.mac_cache.get(ip)
         if c and time.time() - c[1] < 60:
             return c[0]
-        mm = re.search(r" at ([0-9a-f:]{11,17}) ", sh(["arp", "-n", ip], 3))
-        mac = ":".join(x.zfill(2) for x in mm.group(1).split(":")) if mm else ""
+        mac = neighbour_mac(ip)
         self.mac_cache[ip] = (mac, time.time())
         return mac
 
@@ -3864,8 +3889,7 @@ class Manager:
             if urllib.parse.urlsplit(ctl).scheme != "http" or urllib.parse.urlsplit(ctl).hostname != host:
                 continue  # its control address must be the device itself (stream links with the TV code go there)
             udn = tag("UDN") or loc
-            mm = re.search(r" at ([0-9a-f:]{11,17}) ", sh(["arp", "-n", host], 3))
-            mac = ":".join(x.zfill(2) for x in mm.group(1).split(":")) if mm else ""
+            mac = neighbour_mac(host)
             found[udn] = {"id": re.sub(r"\W", "", udn)[-16:], "name": tag("friendlyName") or host, "maker": tag("manufacturer"), "mac": mac,
                           "model": tag("modelName"), "ip": host, "ctl": ctl, "seen": time.time()}
         tvs = {t["id"]: t for t in self.settings.get("tvs") or []}

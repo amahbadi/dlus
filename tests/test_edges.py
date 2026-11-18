@@ -195,6 +195,52 @@ class QRCodes(unittest.TestCase):
         self.assertEqual(len(m), len(m[0]))
 
 
+# recorded `ip -j neigh show` output (documentation addresses): a reachable and a stale device, one still being resolved, one failed, one without a hardware address
+IP_NEIGH = ('[{"dst":"192.0.2.10","dev":"eth0","lladdr":"AA:BB:CC:00:11:22","state":["REACHABLE"]},'
+            '{"dst":"192.0.2.11","dev":"eth0","lladdr":"a:b:c:d:e:f","state":["STALE"]},'
+            '{"dst":"192.0.2.12","dev":"eth0","state":["INCOMPLETE"]},'
+            '{"dst":"192.0.2.13","dev":"eth0","lladdr":"aa:bb:cc:00:11:33","state":["FAILED"]},'
+            '{"dst":"fe80::1","dev":"eth0","lladdr":"aa:bb:cc:00:11:44","router":null,"state":["STALE"]}]')
+ARP_AN = ("? (192.0.2.1) at aa:bb:cc:0:11:1 on en0 ifscope [ethernet]\n"
+          "? (192.0.2.10) at (incomplete) on en0 ifscope [ethernet]\n"
+          "? (224.0.0.251) at 1:0:5e:0:0:fb on en0 ifscope permanent [ethernet]\n")
+
+
+class Neighbours(unittest.TestCase):
+    def test_linux_ip_neigh(self):
+        calls = []
+
+        def fake_sh(cmd, timeout=5):
+            calls.append(cmd)
+            return IP_NEIGH
+        with mock.patch.object(dlus.sys, "platform", "linux"), mock.patch.object(dlus, "sh", fake_sh):
+            self.assertEqual(dlus.neighbours(ifc="eth0"), [("192.0.2.10", "aa:bb:cc:00:11:22"), ("192.0.2.11", "0a:0b:0c:0d:0e:0f")])
+            self.assertEqual(calls[-1], ["ip", "-j", "neigh", "show", "dev", "eth0"])
+            self.assertEqual(dlus.neighbour_mac("192.0.2.10"), "aa:bb:cc:00:11:22")
+            self.assertEqual(calls[-1], ["ip", "-j", "neigh", "show", "to", "192.0.2.10"])
+            self.assertEqual(dlus.neighbour_mac("192.0.2.12"), "")  # still being resolved: no hardware address yet
+            self.assertEqual(dlus.neighbour_mac("192.0.2.13"), "")  # failed
+            m = manager()
+            self.assertEqual(m.mac_of("192.0.2.11"), "0a:0b:0c:0d:0e:0f")
+
+    def test_linux_bad_output(self):
+        for out in ("", "not json", "{}", "[1, 2]", "[]"):
+            with mock.patch.object(dlus.sys, "platform", "linux"), mock.patch.object(dlus, "sh", lambda cmd, timeout=5, o=out: o):
+                self.assertEqual(dlus.neighbours(ifc="eth0"), [])
+
+    def test_macos_arp(self):
+        calls = []
+
+        def fake_sh(cmd, timeout=5):
+            calls.append(cmd)
+            return ARP_AN
+        with mock.patch.object(dlus.sys, "platform", "darwin"), mock.patch.object(dlus, "sh", fake_sh):
+            self.assertEqual(dlus.neighbours(ifc="en0"), [("192.0.2.1", "aa:bb:cc:00:11:01"), ("224.0.0.251", "01:00:5e:00:00:fb")])
+            self.assertEqual(calls[-1], ["arp", "-an", "-i", "en0"])
+            self.assertEqual(dlus.neighbour_mac("192.0.2.1"), "aa:bb:cc:00:11:01")
+            self.assertEqual(calls[-1], ["arp", "-n", "192.0.2.1"])
+
+
 class PublicIP(unittest.TestCase):
     def test_public_ip_with_and_without_answers(self):
         net = dlus.Net()
