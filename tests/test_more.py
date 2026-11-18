@@ -209,6 +209,10 @@ def pipe(a, b):
     finally:
         for s in (a, b):
             try:
+                s.shutdown(socket.SHUT_RDWR)  # on Linux close() alone does not end a recv() waiting in the other thread
+            except OSError:
+                pass
+            try:
                 s.close()
             except OSError:
                 pass

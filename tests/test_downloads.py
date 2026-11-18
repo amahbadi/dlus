@@ -70,8 +70,9 @@ class Downloads(unittest.TestCase):
         self.assertTrue(d.r["checksum_ok"])
         self.assertEqual(d.r["sha256"], want)
         self.assertEqual(os.path.basename(os.path.dirname(d.out)), "Video")  # sorted by type
-        q = subprocess.run(["/usr/bin/xattr", "-p", "com.apple.quarantine", d.out], capture_output=True, text=True)
-        self.assertTrue(q.stdout.startswith("0083;"), q.stdout + q.stderr)
+        if sys.platform == "darwin":  # the quarantine flag is a macOS feature
+            q = subprocess.run(["/usr/bin/xattr", "-p", "com.apple.quarantine", d.out], capture_output=True, text=True)
+            self.assertTrue(q.stdout.startswith("0083;"), q.stdout + q.stderr)
         self.assertFalse(os.path.exists(d.parts))
         st = self.m.state()
         self.assertTrue(any(i["id"] == did and i["status"] == "done" for i in st["items"]))
